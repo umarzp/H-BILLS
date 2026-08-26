@@ -1,4 +1,15 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { onAuthStateChanged, signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  collection,
+  getDocs,
+  setDoc,
+  updateDoc,
+  deleteDoc
+} from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const AppContext = createContext();
 
@@ -101,10 +112,7 @@ export const AppProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : INITIAL_CATEGORIES;
   });
 
-  const [products, setProducts] = useState(() => {
-    const saved = localStorage.getItem('hb_products');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [products, setProducts] = useState([]);
 
   const [customers, setCustomers] = useState(() => {
     const saved = localStorage.getItem('hb_customers');
@@ -141,13 +149,79 @@ export const AppProvider = ({ children }) => {
     return saved ? JSON.parse(saved) : INITIAL_DEMO_SETTINGS;
   });
 
-  const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem('hb_user');
-    return saved ? JSON.parse(saved) : { id: 'U-1', name: 'Umar Mukthar', role: 'admin', avatar: '👑' };
-  });
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const [activeTab, setActiveTab] = useState('dashboard');
   const [cloudStatus, setCloudStatus] = useState({ synced: true, text: 'Cloud Live Sync' });
+  useEffect(() => {
+  const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    try {
+      if (!firebaseUser) {
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (!userSnap.exists()) {
+        console.error('User profile not found in Firestore.');
+        await signOut(auth);
+        setUser(null);
+        setAuthLoading(false);
+        return;
+      }
+
+      const userData = userSnap.data();
+
+      setUser({
+        id: firebaseUser.uid,
+        name: userData.name || firebaseUser.email || 'User',
+        email: userData.email || firebaseUser.email || '',
+        role: userData.role,
+        avatar: userData.role === 'admin' ? '👑' : '👤'
+      });
+
+      setAuthLoading(false);
+    } catch (error) {
+      console.error('Error loading user profile:', error);
+      setUser(null);
+      setAuthLoading(false);
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
+
+// Load products from Firestore
+useEffect(() => {
+  if (!user) return;
+
+  const loadProducts = async () => {
+    try {
+      const snapshot = await getDocs(collection(db, 'products'));
+
+      const firebaseProducts = snapshot.docs.map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+
+      setProducts(firebaseProducts);
+
+      console.log(
+        'Products loaded from Firestore:',
+        firebaseProducts.length
+      );
+    } catch (error) {
+      console.error('Error loading products:', error);
+    }
+  };
+
+  loadProducts();
+}, [user]);
+
 
   // Sync to localStorage
   useEffect(() => { localStorage.setItem('hb_categories', JSON.stringify(categories)); }, [categories]);
@@ -159,7 +233,20 @@ export const AppProvider = ({ children }) => {
   useEffect(() => { localStorage.setItem('hb_inventory_logs', JSON.stringify(inventoryLogs)); }, [inventoryLogs]);
   useEffect(() => { localStorage.setItem('hb_payments', JSON.stringify(payments)); }, [payments]);
   useEffect(() => { localStorage.setItem('hb_settings', JSON.stringify(settings)); }, [settings]);
-  useEffect(() => { localStorage.setItem('hb_user', JSON.stringify(user)); }, [user]);
+
+  const login = async (email, password) => {
+  const result = await signInWithEmailAndPassword(
+    auth,
+    email,
+    password
+  );
+
+  return result.user;
+};
+
+const logout = async () => {
+  await signOut(auth);
+};
 
   // Category Actions
   const addCategory = (catName) => {
@@ -183,40 +270,110 @@ export const AppProvider = ({ children }) => {
   }, [settings.theme]);
 
   // Product Actions
-  const addProduct = (prod) => {
-    const newProd = {
-      ...prod,
-      id: `PRD-${Date.now().toString().slice(-4)}`,
-      stock: Number(prod.stock) || 0,
-      price: Number(prod.price) || 0,
-      costPrice: Number(prod.costPrice) || 0,
-      minStock: Number(prod.minStock) || 5,
-      gstRate: Number(prod.gstRate) || 18,
-    };
+  const addProduct = async (prod) => {
+  const newProd = {
+    ...prod,
+    id: `PRD-${Date.now().toString().slice(-6)}`,
+    stock: Number(prod.stock) || 0,
+    price: Number(prod.price) || 0,
+    costPrice: Number(prod.costPrice) || 0,
+    minStock: Number(prod.minStock) || 5,
+    gstRate: Number(prod.gstRate) || 18,
+  };
+
+  try {
+    await setDoc(
+      doc(db, 'products', newProd.id),
+      newProd
+    );
+
     setProducts(prev => [newProd, ...prev]);
-    // Log inventory creation
-    const log = {
-      id: `LOG-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      productId: newProd.id,
-      productName: newProd.name,
-      changeQty: newProd.stock,
-      previousStock: 0,
-      newStock: newProd.stock,
-      type: 'Initial Stock',
-      reason: 'Product Creation'
-    };
-    setInventoryLogs(prev => [log, ...prev]);
-    return newProd;
+
+    console.log(
+      'Product saved to Firestore:',
+      newProd.id
+    );
+  } catch (error) {
+    console.error(
+      'Error saving product:',
+      error
+    );
+
+    alert('Failed to save product to Firebase.');
+
+    return null;
+  }
+
+  // Log inventory creation
+  const log = {
+    id: `LOG-${Date.now()}`,
+    date: new Date().toISOString().slice(0, 10),
+    productId: newProd.id,
+    productName: newProd.name,
+    changeQty: newProd.stock,
+    previousStock: 0,
+    newStock: newProd.stock,
+    type: 'Initial Stock',
+    reason: 'Product Created'
   };
 
-  const updateProduct = (id, updated) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, ...updated } : p));
+  setInventoryLogs(prev => [log, ...prev]);
+
+  return newProd;
+};
+
+    const updateProduct = async (id, updated) => {
+    try {
+      await updateDoc(
+        doc(db, 'products', id),
+        updated
+      );
+
+      setProducts(prev =>
+        prev.map(p =>
+          p.id === id
+            ? { ...p, ...updated }
+            : p
+        )
+      );
+
+      console.log(
+        'Product updated in Firestore:',
+        id
+      );
+    } catch (error) {
+      console.error(
+        'Error updating product:',
+        error
+      );
+
+      alert('Failed to update product in Firebase.');
+    }
   };
 
-  const deleteProduct = (id) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-  };
+  const deleteProduct = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'products', id)
+    );
+
+    setProducts(prev =>
+      prev.filter(p => p.id !== id)
+    );
+
+    console.log(
+      'Product deleted from Firestore:',
+      id
+    );
+  } catch (error) {
+    console.error(
+      'Error deleting product:',
+      error
+    );
+
+    alert('Failed to delete product in Firebase.');
+  }
+};
 
   const adjustStock = (productId, changeQty, reason, type = 'Manual Adjustment') => {
     let affectedProdName = '';
@@ -457,15 +614,6 @@ export const AppProvider = ({ children }) => {
     return newPO;
   };
 
-  // Settings & Theme & Auth
-  const switchUserRole = (role) => {
-    setUser(prev => ({
-      ...prev,
-      role,
-      name: role === 'admin' ? 'Umar Mukthar (Admin)' : 'Cashier Staff'
-    }));
-  };
-
   const toggleTheme = () => {
     setSettings(prev => ({
       ...prev,
@@ -565,7 +713,7 @@ export const AppProvider = ({ children }) => {
       inventoryLogs, deleteInventoryLog,
       payments, deletePayment,
       settings, updateSettings, toggleTheme,
-      user, switchUserRole,
+      user, login, logout, authLoading,
       activeTab, setActiveTab,
       cloudStatus,
       exportDataJSON, importDataJSON, resetToDemoData, clearAllData

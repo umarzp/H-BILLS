@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export const Navbar = () => {
-  const { settings, toggleTheme, user, switchUserRole, cloudStatus, exportDataJSON, setActiveTab } = useApp();
+  const { settings, toggleTheme, user, logout, cloudStatus, exportDataJSON, setActiveTab } = useApp();
 
   return (
     <header className="navbar no-print">
@@ -82,7 +82,7 @@ export const Navbar = () => {
             <span style={{ fontSize: '0.675rem', color: 'var(--text-muted)', textTransform: 'capitalize' }}>Role: {user.role}</span>
           </div>
           <button
-            onClick={() => switchUserRole(user.role === 'admin' ? 'staff' : 'admin')}
+            onClick={logout}
             style={{
               background: 'var(--bg-secondary)',
               border: '1px solid var(--border-color)',
@@ -93,9 +93,9 @@ export const Navbar = () => {
               cursor: 'pointer',
               marginLeft: '4px'
             }}
-            title="Switch between Admin and Staff view"
+            title="Logout"
           >
-            Switch
+            Logout
           </button>
         </div>
       </div>

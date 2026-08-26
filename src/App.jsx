@@ -1,7 +1,13 @@
 import React from 'react';
+
 import { AppProvider, useApp } from './context/AppContext';
+
+import { Login } from './components/Login';
+
 import { Navbar } from './components/Navbar';
+
 import { Sidebar } from './components/Sidebar';
+
 import { MobileNav } from './components/MobileNav';
 
 import { Dashboard } from './components/Dashboard';
@@ -15,7 +21,28 @@ import { Reports } from './components/Reports';
 import { SettingsBackup } from './components/SettingsBackup';
 
 const AppContent = () => {
-  const { activeTab } = useApp();
+  const { activeTab, user, authLoading } = useApp();
+
+  if (authLoading) {
+    return (
+      <div
+        style={{
+          minHeight: '100vh',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--bg-primary)',
+          color: 'var(--text-primary)'
+        }}
+      >
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Login />;
+  }
 
   const renderTabContent = () => {
     switch (activeTab) {

@@ -19,7 +19,6 @@ export const SettingsBackup = () => {
     settings, 
     updateSettings, 
     user, 
-    switchUserRole, 
     exportDataJSON, 
     importDataJSON 
   } = useApp();
@@ -174,37 +173,6 @@ export const SettingsBackup = () => {
 
         {/* RIGHT: User Auth Roles & Data Backup Exporter/Importer */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-          {/* User Account Role Switcher */}
-          <div className="card">
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <ShieldCheck size={20} style={{ color: 'var(--accent-primary)' }} />
-              <span>Account Role Switcher</span>
-            </h3>
-
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-              Switch current user mode between <strong>Admin</strong> (full reports & cost access) and <strong>Staff Cashier</strong> (POS & stock view).
-            </p>
-
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                onClick={() => switchUserRole('admin')}
-                className={`btn ${user.role === 'admin' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1 }}
-              >
-                <ShieldCheck size={16} />
-                <span>Admin</span>
-              </button>
-
-              <button
-                onClick={() => switchUserRole('staff')}
-                className={`btn ${user.role === 'staff' ? 'btn-primary' : 'btn-secondary'}`}
-                style={{ flex: 1 }}
-              >
-                <UserCheck size={16} />
-                <span>Staff Cashier</span>
-              </button>
-            </div>
-          </div>
 
           {/* Backup & Restore Panel */}
           <div className="card">
