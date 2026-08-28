@@ -20,7 +20,11 @@ export const SettingsBackup = () => {
     updateSettings, 
     user, 
     exportDataJSON, 
-    importDataJSON 
+    importDataJSON,
+    taxInvoiceSeq,
+    setTaxInvoiceSeq,
+    retailBillSeq,
+    setRetailBillSeq
   } = useApp();
 
   const [form, setForm] = useState({
@@ -31,13 +35,20 @@ export const SettingsBackup = () => {
     email: settings.email || '',
     address: settings.address || '',
     upiId: settings.upiId || '',
-    terms: settings.terms || ''
+    terms: settings.terms || '',
+    taxInvoicePrefix: settings.taxInvoicePrefix || 'TAX-',
+    retailBillPrefix: settings.retailBillPrefix || 'RET-'
   });
+
+  const [customTaxSeq, setCustomTaxSeq] = useState(taxInvoiceSeq || 1001);
+  const [customRetailSeq, setCustomRetailSeq] = useState(retailBillSeq || 1001);
 
   const handleSaveProfile = (e) => {
     e.preventDefault();
     updateSettings(form);
-    alert('Business Profile & Billing settings updated successfully!');
+    setTaxInvoiceSeq(Number(customTaxSeq) || 1001);
+    setRetailBillSeq(Number(customRetailSeq) || 1001);
+    alert('Business Profile, Prefixes & Sequence counters updated successfully!');
   };
 
   const handleFileChange = (e) => {
@@ -161,6 +172,77 @@ export const SettingsBackup = () => {
                   onChange={(e) => setForm(f => ({ ...f, terms: e.target.value }))}
                   className="form-textarea"
                 />
+              </div>
+
+              {/* Invoice & Bill Numbering Sequences Block */}
+              <div style={{ gridColumn: 'span 2', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed var(--border-color)' }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: 'var(--accent-primary)', marginBottom: '0.75rem' }}>
+                  📄 Separate Bill Number Sequences & Prefixes
+                </h4>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', background: 'var(--bg-secondary)', padding: '1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-color)' }}>
+                  {/* Tax Invoice Sequence */}
+                  <div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                      📄 GST Tax Invoice Sequence
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.7rem' }}>Prefix</label>
+                        <input
+                          type="text"
+                          placeholder="TAX-"
+                          value={form.taxInvoicePrefix}
+                          onChange={(e) => setForm(f => ({ ...f, taxInvoicePrefix: e.target.value }))}
+                          className="form-input"
+                          style={{ fontFamily: 'var(--font-mono)' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.7rem' }}>Next Sequence #</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={customTaxSeq}
+                          onChange={(e) => setCustomTaxSeq(e.target.value)}
+                          className="form-input"
+                          style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Retail Bill Sequence */}
+                  <div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', display: 'block', marginBottom: '6px' }}>
+                      🧾 Non-GST Retail Bill Sequence
+                    </span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.7rem' }}>Prefix</label>
+                        <input
+                          type="text"
+                          placeholder="RET-"
+                          value={form.retailBillPrefix}
+                          onChange={(e) => setForm(f => ({ ...f, retailBillPrefix: e.target.value }))}
+                          className="form-input"
+                          style={{ fontFamily: 'var(--font-mono)' }}
+                        />
+                      </div>
+                      <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                        <label className="form-label" style={{ fontSize: '0.7rem' }}>Next Sequence #</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={customRetailSeq}
+                          onChange={(e) => setCustomRetailSeq(e.target.value)}
+                          className="form-input"
+                          style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 

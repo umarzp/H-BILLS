@@ -24,6 +24,7 @@ export const BillingPOS = () => {
     customers, 
     addCustomer, 
     createInvoice,
+    getNextInvoiceNumber,
     categories: appCategories
   } = useApp();
 
@@ -36,6 +37,10 @@ export const BillingPOS = () => {
   const [gstType, setGstType] = useState('GST'); // 'GST' or 'NON_GST'
   const [paymentMode, setPaymentMode] = useState('UPI'); // 'UPI', 'Cash', 'Card', 'Credit'
   const [overallDiscount, setOverallDiscount] = useState(0);
+
+  const currentNextBill = getNextInvoiceNumber ? getNextInvoiceNumber(gstType) : '';
+  const nextTaxNum = getNextInvoiceNumber ? getNextInvoiceNumber('GST') : '';
+  const nextRetailNum = getNextInvoiceNumber ? getNextInvoiceNumber('NON_GST') : '';
 
   // Cash payment change helper
   const [cashTendered, setCashTendered] = useState('');
@@ -278,10 +283,15 @@ export const BillingPOS = () => {
       {/* RIGHT: Active Billing Cart */}
       <div className="pos-cart">
         {/* Cart Header */}
-        <div style={{ padding: '1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ padding: '0.85rem 1rem', borderBottom: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShoppingCart size={20} style={{ color: 'var(--accent-primary)' }} />
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--text-primary)' }}>New Sale Bill</h3>
+            <div>
+              <h3 style={{ fontSize: '1rem', fontWeight: 800, color: 'var(--text-primary)', margin: 0, lineHeight: 1.2 }}>New Sale Bill</h3>
+              <span style={{ fontSize: '0.725rem', fontFamily: 'var(--font-mono)', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                #{currentNextBill}
+              </span>
+            </div>
           </div>
 
           {/* GST vs Non-GST Selector */}
@@ -289,16 +299,18 @@ export const BillingPOS = () => {
             <button 
               onClick={() => setGstType('GST')}
               className={`btn btn-sm ${gstType === 'GST' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+              style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+              title={`Next Tax Invoice: ${nextTaxNum}`}
             >
-              GST Bill
+              📄 Tax ({nextTaxNum})
             </button>
             <button 
               onClick={() => setGstType('NON_GST')}
               className={`btn btn-sm ${gstType === 'NON_GST' ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+              style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+              title={`Next Retail Bill: ${nextRetailNum}`}
             >
-              Non-GST
+              🧾 Retail ({nextRetailNum})
             </button>
           </div>
         </div>
