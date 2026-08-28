@@ -89,7 +89,9 @@ const INITIAL_DEMO_SETTINGS = {
   upiId: 'hbills@upi',
   terms: '1. Goods once sold will not be returned. 2. 18% interest charged on unpaid bills after 30 days.',
   theme: 'dark',
-  currency: '₹'
+  currency: '₹',
+  taxInvoicePrefix: 'TAX-',
+  retailBillPrefix: 'RET-'
 };
 
 export const AppProvider = ({ children }) => {
@@ -147,6 +149,16 @@ export const AppProvider = ({ children }) => {
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('hb_settings');
     return saved ? JSON.parse(saved) : INITIAL_DEMO_SETTINGS;
+  });
+
+  const [taxInvoiceSeq, setTaxInvoiceSeq] = useState(() => {
+    const saved = localStorage.getItem('hb_tax_invoice_seq');
+    return saved ? Number(saved) : 1001;
+  });
+
+  const [retailBillSeq, setRetailBillSeq] = useState(() => {
+    const saved = localStorage.getItem('hb_retail_bill_seq');
+    return saved ? Number(saved) : 1001;
   });
 
   const [user, setUser] = useState(null);
@@ -233,6 +245,8 @@ useEffect(() => {
   useEffect(() => { localStorage.setItem('hb_inventory_logs', JSON.stringify(inventoryLogs)); }, [inventoryLogs]);
   useEffect(() => { localStorage.setItem('hb_payments', JSON.stringify(payments)); }, [payments]);
   useEffect(() => { localStorage.setItem('hb_settings', JSON.stringify(settings)); }, [settings]);
+  useEffect(() => { localStorage.setItem('hb_tax_invoice_seq', taxInvoiceSeq.toString()); }, [taxInvoiceSeq]);
+  useEffect(() => { localStorage.setItem('hb_retail_bill_seq', retailBillSeq.toString()); }, [retailBillSeq]);
 
   const login = async (email, password) => {
   const result = await signInWithEmailAndPassword(
@@ -403,15 +417,37 @@ const logout = async () => {
     }));
   };
 
+  const getNextInvoiceNumber = (gstType = 'GST') => {
+    if (gstType === 'GST') {
+      const prefix = settings.taxInvoicePrefix || 'TAX-';
+      return `${prefix}${taxInvoiceSeq}`;
+    } else {
+      const prefix = settings.retailBillPrefix || 'RET-';
+      return `${prefix}${retailBillSeq}`;
+    }
+  };
+
   // Create Invoice (Sale)
   const createInvoice = (invoiceData) => {
-    const invCount = invoices.length + 1001;
+    const isTaxInvoice = (invoiceData.gstType === 'GST');
+    let invoiceNumber = '';
+    
+    if (isTaxInvoice) {
+      const prefix = settings.taxInvoicePrefix || 'TAX-';
+      invoiceNumber = `${prefix}${taxInvoiceSeq}`;
+      setTaxInvoiceSeq(prev => prev + 1);
+    } else {
+      const prefix = settings.retailBillPrefix || 'RET-';
+      invoiceNumber = `${prefix}${retailBillSeq}`;
+      setRetailBillSeq(prev => prev + 1);
+    }
+
     const newInvoice = {
       ...invoiceData,
       id: `INV-${Date.now()}`,
-      invoiceNumber: `HB-${invCount}`,
+      invoiceNumber,
       date: new Date().toISOString().slice(0, 10),
-      createdBy: user.name,
+      createdBy: user ? user.name : 'Staff Cashier',
     };
 
     // 1. Deduct Stock for each item
@@ -709,7 +745,8 @@ const logout = async () => {
       products, setProducts, addProduct, updateProduct, deleteProduct, adjustStock,
       customers, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
       suppliers, addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment, createPurchase, purchases,
-      invoices, createInvoice, deleteInvoice,
+      invoices, createInvoice, deleteInvoice, getNextInvoiceNumber,
+      taxInvoiceSeq, setTaxInvoiceSeq, retailBillSeq, setRetailBillSeq,
       inventoryLogs, deleteInventoryLog,
       payments, deletePayment,
       settings, updateSettings, toggleTheme,

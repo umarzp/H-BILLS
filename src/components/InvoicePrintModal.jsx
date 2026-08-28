@@ -133,10 +133,10 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
 
             <div style={{ textAlign: printFormat === 'thermal' ? 'center' : 'right', marginTop: printFormat === 'thermal' ? '8px' : 0 }}>
               <div style={{ display: 'inline-block', background: isGstBill ? '#0284c7' : '#475569', color: '#ffffff', padding: '3px 10px', borderRadius: '4px', fontWeight: 800, fontSize: '11px', textTransform: 'uppercase', marginBottom: '6px' }}>
-                {isGstBill ? 'TAX INVOICE' : 'RETAIL BILL'}
+                {isGstBill ? 'TAX INVOICE' : 'RETAIL BILL / CASH MEMO'}
               </div>
               <p style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>
-                Invoice #: {invoice.invoiceNumber}
+                {isGstBill ? 'Tax Invoice #' : 'Retail Bill #'}: {invoice.invoiceNumber}
               </p>
               <p style={{ fontSize: '11px', color: '#475569', margin: '2px 0' }}>Date: {invoice.date}</p>
             </div>
