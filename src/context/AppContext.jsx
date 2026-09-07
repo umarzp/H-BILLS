@@ -7,7 +7,8 @@ import {
   getDocs,
   setDoc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  writeBatch
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
@@ -660,8 +661,226 @@ const logout = async () => {
   const updateSettings = (newSet) => {
     setSettings(prev => ({ ...prev, ...newSet }));
   };
+  // ============================================================
+  // ONE-TIME PRODUCTION DATA MIGRATION
+  // Copies current browser localStorage data to Firestore.
+  // Does NOT delete localStorage data.
+  // ============================================================
 
+  const migrateProductionDataToFirebase = async () => {
+    if (!user) {
+      alert('Please login before starting the migration.');
+      return;
+    }
+
+    if (user.role !== 'admin') {
+      alert('Only an Admin can run the migration.');
+      return;
+    }
+
+    try {
+      setCloudStatus({
+        synced: false,
+        text: 'Migrating data to Firebase...'
+      });
+
+      console.log('Starting production data migration...');
+
+      const categoriesData = JSON.parse(
+        localStorage.getItem('hb_categories') || '[]'
+      );
+
+      const customersData = JSON.parse(
+        localStorage.getItem('hb_customers') || '[]'
+      );
+
+      const suppliersData = JSON.parse(
+        localStorage.getItem('hb_suppliers') || '[]'
+      );
+
+      const purchasesData = JSON.parse(
+        localStorage.getItem('hb_purchases') || '[]'
+      );
+
+      const invoicesData = JSON.parse(
+        localStorage.getItem('hb_invoices') || '[]'
+      );
+
+      const paymentsData = JSON.parse(
+        localStorage.getItem('hb_payments') || '[]'
+      );
+
+      const inventoryLogsData = JSON.parse(
+        localStorage.getItem('hb_inventory_logs') || '[]'
+      );
+
+      const settingsData = JSON.parse(
+        localStorage.getItem('hb_settings') || '{}'
+      );
+
+      const taxSeq = Number(
+        localStorage.getItem('hb_tax_invoice_seq') || 1001
+      );
+
+      const retailSeq = Number(
+        localStorage.getItem('hb_retail_bill_seq') || 1001
+      );
+
+      console.log('Production data found:', {
+        categories: categoriesData.length,
+        customers: customersData.length,
+        suppliers: suppliersData.length,
+        purchases: purchasesData.length,
+        invoices: invoicesData.length,
+        payments: paymentsData.length,
+        inventoryLogs: inventoryLogsData.length,
+        taxInvoiceSeq: taxSeq,
+        retailBillSeq: retailSeq
+      });
+
+      // ------------------------------------------------------------
+      // Helper: write documents in batches
+      // ------------------------------------------------------------
+
+      const writeCollection = async (collectionName, records) => {
+        if (!Array.isArray(records) || records.length === 0) {
+          console.log(`No records to migrate for ${collectionName}`);
+          return;
+        }
+
+        for (let start = 0; start < records.length; start += 450) {
+          const batch = writeBatch(db);
+          const chunk = records.slice(start, start + 450);
+
+          chunk.forEach((record) => {
+            if (!record || !record.id) {
+              console.warn(
+                `Skipping invalid record in ${collectionName}:`,
+                record
+              );
+              return;
+            }
+
+            const recordRef = doc(
+              db,
+              collectionName,
+              String(record.id)
+            );
+
+            batch.set(recordRef, record);
+          });
+
+          await batch.commit();
+
+          console.log(
+            `Migrated ${chunk.length} records to ${collectionName}`
+          );
+        }
+      };
+
+      // ------------------------------------------------------------
+      // Migrate collections
+      // ------------------------------------------------------------
+
+      await writeCollection('customers', customersData);
+
+      await writeCollection('suppliers', suppliersData);
+
+      await writeCollection('purchases', purchasesData);
+
+      await writeCollection('invoices', invoicesData);
+
+      await writeCollection('payments', paymentsData);
+
+      await writeCollection('inventoryLogs', inventoryLogsData);
+
+      // ------------------------------------------------------------
+      // Categories
+      // ------------------------------------------------------------
+
+      await setDoc(
+        doc(db, 'categories', 'config'),
+        {
+          categories: categoriesData,
+          migratedAt: new Date().toISOString()
+        }
+      );
+
+      // ------------------------------------------------------------
+      // Store Settings
+      // ------------------------------------------------------------
+
+      await setDoc(
+        doc(db, 'settings', 'store'),
+        {
+          ...settingsData,
+          migratedAt: new Date().toISOString()
+        }
+      );
+
+      // ------------------------------------------------------------
+      // Invoice Counters
+      // ------------------------------------------------------------
+
+      await setDoc(
+        doc(db, 'counters', 'invoices'),
+        {
+          taxInvoiceSeq: taxSeq,
+          retailBillSeq: retailSeq,
+          migratedAt: new Date().toISOString()
+        }
+      );
+
+      // ------------------------------------------------------------
+      // Products intentionally NOT migrated.
+      // Existing Firestore products remain untouched.
+      // ------------------------------------------------------------
+
+      setCloudStatus({
+        synced: true,
+        text: 'Migration completed'
+      });
+
+      console.log('====================================');
+      console.log('PRODUCTION MIGRATION COMPLETED');
+      console.log('====================================');
+
+      alert(
+        'Production data migration completed successfully!\n\n' +
+        `Invoices: ${invoicesData.length}\n` +
+        `Payments: ${paymentsData.length}\n` +
+        `Inventory Logs: ${inventoryLogsData.length}\n` +
+        `Customers: ${customersData.length}\n` +
+        `Suppliers: ${suppliersData.length}\n` +
+        `Purchases: ${purchasesData.length}`
+      );
+
+      return true;
+
+    } catch (error) {
+      console.error(
+        'PRODUCTION MIGRATION FAILED:',
+        error
+      );
+
+      setCloudStatus({
+        synced: false,
+        text: 'Migration failed'
+      });
+
+      alert(
+        'Migration failed.\n\n' +
+        'Your localStorage data has NOT been deleted.\n\n' +
+        'Check the browser console for the error.'
+      );
+
+      return false;
+    }
+  };
+ // ============================================================
   // Backup & Restore
+  // ============================================================
+
   const exportDataJSON = () => {
     const data = {
       products,
@@ -675,13 +894,16 @@ const logout = async () => {
       version: '1.0.0',
       exportedAt: new Date().toISOString()
     };
+
     const jsonStr = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
+
     a.href = url;
     a.download = `HBills_Backup_${new Date().toISOString().slice(0,10)}.json`;
     a.click();
+
     URL.revokeObjectURL(url);
   };
 
@@ -753,7 +975,8 @@ const logout = async () => {
       user, login, logout, authLoading,
       activeTab, setActiveTab,
       cloudStatus,
-      exportDataJSON, importDataJSON, resetToDemoData, clearAllData
+exportDataJSON, importDataJSON, resetToDemoData, clearAllData,
+migrateProductionDataToFirebase
     }}>
       {children}
     </AppContext.Provider>
@@ -761,3 +984,5 @@ const logout = async () => {
 };
 
 export const useApp = () => useContext(AppContext);
+
+  
