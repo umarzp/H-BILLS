@@ -16,16 +16,17 @@ import {
 
 export const SettingsBackup = () => {
   const { 
-    settings, 
-    updateSettings, 
-    user, 
-    exportDataJSON, 
-    importDataJSON,
-    taxInvoiceSeq,
-    setTaxInvoiceSeq,
-    retailBillSeq,
-    setRetailBillSeq
-  } = useApp();
+  settings, 
+  updateSettings, 
+  user, 
+  exportDataJSON, 
+  importDataJSON,
+  taxInvoiceSeq,
+  setTaxInvoiceSeq,
+  retailBillSeq,
+  setRetailBillSeq,
+  migrateProductionDataToFirebase
+} = useApp();
 
   const [form, setForm] = useState({
     storeName: settings.storeName || '',
@@ -266,14 +267,32 @@ export const SettingsBackup = () => {
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1.25rem' }}>
               Export a full offline JSON copy of your store's items, bills, customer accounts, and logs, or restore from a backup file.
             </p>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {/* Export JSON Button */}
               <button onClick={exportDataJSON} className="btn btn-success" style={{ width: '100%' }}>
                 <Download size={18} />
                 <span>Export Full Backup (JSON)</span>
               </button>
+               {user?.role === 'admin' && (
+                 <button
+                   onClick={() => {
+                     const confirmed = window.confirm(
+                       'IMPORTANT: Run this only on the production H BILLS website after downloading a backup.\n\n' +
+                       'This will copy production localStorage business data into Firebase Firestore.\n\n' +
+                       'Continue with Firebase migration?'
+                     );
 
+                     if (confirmed) {
+                       migrateProductionDataToFirebase();
+                     }
+                   }}
+                   className="btn btn-primary"
+                   style={{ width: '100%' }}
+                  >
+                   <Upload size={18} />
+                   <span>Migrate Production Data to Firebase</span>
+                   </button>
+                 )}
               {/* Import JSON File Input */}
               <label className="btn btn-secondary" style={{ width: '100%', cursor: 'pointer', textAlign: 'center' }}>
                 <Upload size={18} />
