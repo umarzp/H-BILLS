@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatDate } from '../utils/formatDate';
 import { 
   BarChart3, 
   Download, 
   Calendar, 
   FileSpreadsheet, 
-  DollarSign, 
   PieChart, 
   TrendingUp,
   Receipt,
@@ -195,7 +195,7 @@ export const Reports = () => {
                   <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent-primary)' }}>
                     {inv.invoiceNumber}
                   </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{inv.date}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{formatDate(inv.date)}</td>
                   <td style={{ fontWeight: 700 }}>{inv.customerName || 'Walk-in Customer'}</td>
                   <td style={{ fontWeight: 800 }}>₹{inv.total.toLocaleString('en-IN')}</td>
                   <td>₹{(inv.taxTotal || 0).toLocaleString('en-IN')}</td>

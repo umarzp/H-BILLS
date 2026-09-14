@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Package, 
-  Search, 
-  ArrowUpRight, 
-  ArrowDownRight, 
-  PlusCircle, 
-  MinusCircle, 
-  History, 
+import { formatDate } from '../utils/formatDate';
+import {
+  Package,
+  Search,
+  ArrowUpRight,
+  ArrowDownRight,
+  PlusCircle,
+  MinusCircle,
+  History,
   AlertTriangle,
   X,
   Trash2
@@ -26,28 +27,38 @@ export const Inventory = () => {
   const [activeTab, setActiveTab] = useState('current'); // 'current' or 'history'
 
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.sku.toLowerCase().includes(searchQuery.toLowerCase());
-    
+
     if (filterStockStatus === 'LowStock') return matchesSearch && p.stock <= p.minStock && p.stock > 0;
     if (filterStockStatus === 'OutOfStock') return matchesSearch && p.stock <= 0;
     return matchesSearch;
   });
 
-  const handleStockAdjustmentSubmit = (e) => {
+  const handleStockAdjustmentSubmit = async (e) => {
     e.preventDefault();
     if (!selectedProductForAdjust || !adjustQty) return;
 
     const qty = Number(adjustQty);
     const finalChangeQty = adjustType === 'Stock In' ? qty : -qty;
 
-    adjustStock(selectedProductForAdjust, finalChangeQty, adjustReason || 'Manual Inventory Adjustment', adjustType);
+    const success = await adjustStock(
+  selectedProductForAdjust,
+  finalChangeQty,
+  adjustReason || 'Manual Inventory Adjustment',
+  adjustType
+);
 
-    setShowAdjustModal(false);
-    setSelectedProductForAdjust('');
-    setAdjustQty('');
-    setAdjustReason('');
-    alert('Stock adjusted successfully!');
+if (!success) {
+  return;
+}
+
+setShowAdjustModal(false);
+setSelectedProductForAdjust('');
+setAdjustQty('');
+setAdjustReason('');
+
+alert('Stock adjusted successfully!');
   };
 
   return (
@@ -65,7 +76,7 @@ export const Inventory = () => {
         </div>
 
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button 
+          <button
             onClick={() => setShowAdjustModal(true)}
             className="btn btn-primary"
           >
@@ -239,7 +250,7 @@ export const Inventory = () => {
               <tbody>
                 {inventoryLogs.map(log => (
                   <tr key={log.id}>
-                    <td style={{ color: 'var(--text-secondary)' }}>{log.date}</td>
+                    <td style={{ color: 'var(--text-secondary)' }}>{formatDate(log.date)}</td>
                     <td style={{ fontWeight: 700 }}>{log.productName}</td>
                     <td>
                       <span className={`badge ${log.changeQty > 0 ? 'badge-success' : 'badge-danger'}`}>

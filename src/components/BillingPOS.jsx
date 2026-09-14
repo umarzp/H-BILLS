@@ -135,7 +135,7 @@ export const BillingPOS = () => {
   const changeAmount = Math.max(0, (Number(cashTendered) || 0) - grandTotal);
 
   // Handle Checkout Submit
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cart.length === 0) {
       alert('Your cart is empty! Add products to create a bill.');
       return;
@@ -143,25 +143,47 @@ export const BillingPOS = () => {
 
     const selectedCust = customers.find(c => c.id === selectedCustomerId);
 
-    const invoiceData = {
-      customerId: selectedCustomerId || 'WALK-IN',
-      customerName: selectedCust ? selectedCust.name : 'Walk-in Customer',
-      customerGst: selectedCust ? selectedCust.gstIn : '',
-      items: cart.map(item => ({
-        ...item,
-        total: (item.price * item.qty) - item.discount
-      })),
-      subtotal,
-      discount: totalItemDiscount + Number(overallDiscount),
-      taxTotal: Math.round(taxTotal),
-      total: grandTotal,
-      paymentMode,
-      paymentStatus: paymentMode === 'Credit' ? 'UNPAID' : 'PAID',
-      gstType
-    };
+    const cashReceived =
+  paymentMode === 'Cash'
+    ? Math.min(Number(cashTendered) || 0, grandTotal)
+    : grandTotal;
 
-    const createdInv = createInvoice(invoiceData);
+const balanceDue =
+  paymentMode === 'Credit'
+    ? grandTotal
+    : Math.max(0, grandTotal - cashReceived);
 
+const paymentStatus =
+  balanceDue <= 0
+    ? 'PAID'
+    : cashReceived > 0
+      ? 'PARTIAL'
+      : 'UNPAID';
+
+const invoiceData = {
+  customerId: selectedCustomerId || 'WALK-IN',
+  customerName: selectedCust ? selectedCust.name : 'Walk-in Customer',
+  customerGst: selectedCust ? selectedCust.gstIn : '',
+  items: cart.map(item => ({
+    ...item,
+    total: (item.price * item.qty) - item.discount
+  })),
+  subtotal,
+  discount: totalItemDiscount + Number(overallDiscount),
+  taxTotal: Math.round(taxTotal),
+  total: grandTotal,
+  paymentMode,
+  paymentStatus,
+  amountPaid: cashReceived,
+  balanceDue,
+  gstType
+};
+
+    const createdInv = await createInvoice(invoiceData);
+
+    if (!createdInv) {
+      return;
+}
     // Confetti celebration effect
     confetti({
       particleCount: 80,

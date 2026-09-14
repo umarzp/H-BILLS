@@ -138,7 +138,7 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
               <p style={{ fontSize: '13px', fontWeight: 800, color: '#0f172a', margin: '2px 0' }}>
                 {isGstBill ? 'Tax Invoice #' : 'Retail Bill #'}: {invoice.invoiceNumber}
               </p>
-              <p style={{ fontSize: '11px', color: '#475569', margin: '2px 0' }}>Date: {invoice.date}</p>
+              <p style={{ fontSize: '11px', color: '#475569', margin: '2px 0' }}>Date: {formatDate(invoice.date)}</p>
             </div>
           </div>
 
