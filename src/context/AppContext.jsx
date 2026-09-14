@@ -1093,6 +1093,12 @@ const createInvoice = async (invoiceData) => {
           reference: newInvoice.invoiceNumber
         };
       }
+       if (payRecord) {
+  transaction.set(
+    doc(db, 'payments', payRecord.id),
+    payRecord
+  );
+}
 
       // --------------------------------------------------------
       // 9. Increment correct invoice counter
