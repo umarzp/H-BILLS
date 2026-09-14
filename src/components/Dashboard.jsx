@@ -1,9 +1,10 @@
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatDate } from '../utils/formatDate';
 import { 
   TrendingUp, 
   ShoppingBag, 
-  DollarSign, 
+  IndianRupee,
   AlertTriangle, 
   PlusCircle, 
   Receipt, 
@@ -240,7 +241,7 @@ export const Dashboard = () => {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
               <span className="form-label" style={{ margin: 0 }}>Estimated Net Profit</span>
               <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '8px', borderRadius: 'var(--radius-md)' }}>
-                <DollarSign size={20} />
+               <IndianRupee size={20} />
               </div>
             </div>
             <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success)' }}>
@@ -365,7 +366,7 @@ export const Dashboard = () => {
                   <td style={{ fontWeight: 700, color: 'var(--accent-primary)', fontFamily: 'var(--font-mono)' }}>
                     {inv.invoiceNumber}
                   </td>
-                  <td style={{ color: 'var(--text-secondary)' }}>{inv.date}</td>
+                  <td style={{ color: 'var(--text-secondary)' }}>{formatDate(inv.date)}</td>
                   <td style={{ fontWeight: 600 }}>{inv.customerName || 'Walk-in Customer'}</td>
                   <td>{inv.items.length} Items</td>
                   <td style={{ fontWeight: 700 }}>₹{inv.total.toLocaleString('en-IN')}</td>

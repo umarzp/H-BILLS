@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import QRCode from 'qrcode';
 import { useApp } from '../context/AppContext';
+import { formatDate } from '../utils/formatDate';
 import { 
   CreditCard, 
   ArrowUpRight, 
@@ -108,7 +109,7 @@ export const Payments = () => {
                 <tbody>
                   {filteredPayments.map(pay => (
                     <tr key={pay.id}>
-                      <td style={{ color: 'var(--text-secondary)' }}>{pay.date}</td>
+                      <td style={{ color: 'var(--text-secondary)' }}>{formatDate(pay.date)}</td>
                       <td>
                         <span className={`badge ${pay.type === 'IN' ? 'badge-success' : 'badge-warning'}`}>
                           {pay.type === 'IN' ? <ArrowUpRight size={14} /> : <ArrowDownRight size={14} />}

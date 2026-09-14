@@ -8,7 +8,9 @@ import {
   setDoc,
   updateDoc,
   deleteDoc,
-  writeBatch
+  writeBatch,
+  runTransaction,
+  onSnapshot
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
@@ -208,31 +210,307 @@ export const AppProvider = ({ children }) => {
   return () => unsubscribe();
 }, []);
 
-// Load products from Firestore
+// ============================================================
+// LOAD ALL BUSINESS DATA FROM FIRESTORE
+// Firebase is becoming the main source of truth.
+// ============================================================
 useEffect(() => {
   if (!user) return;
+ // ==========================================================
+  // REALTIME PRODUCTS LISTENER
+  // ==========================================================
+  const unsubscribeProducts = onSnapshot(
+    collection(db, 'products'),
 
-  const loadProducts = async () => {
-    try {
-      const snapshot = await getDocs(collection(db, 'products'));
-
-      const firebaseProducts = snapshot.docs.map((docSnap) => ({
+    (snapshot) => {
+      const realtimeProducts = snapshot.docs.map(docSnap => ({
         id: docSnap.id,
         ...docSnap.data()
       }));
 
-      setProducts(firebaseProducts);
+      setProducts(realtimeProducts);
 
       console.log(
-        'Products loaded from Firestore:',
-        firebaseProducts.length
+        'Realtime products updated:',
+        realtimeProducts.length
       );
-    } catch (error) {
-      console.error('Error loading products:', error);
-    }
-  };
+    },
 
-  loadProducts();
+    (error) => {
+      console.error(
+        'Realtime products listener error:',
+        error
+      );
+    }
+    );
+
+  // ==========================================================
+  // REALTIME CUSTOMERS LISTENER
+  // ==========================================================
+  const unsubscribeCustomers = onSnapshot(
+    collection(db, 'customers'),
+
+    (snapshot) => {
+      const realtimeCustomers = snapshot.docs.map(docSnap => ({
+        id: docSnap.id,
+        ...docSnap.data()
+      }));
+
+      setCustomers(realtimeCustomers);
+
+      console.log(
+        'Realtime customers updated:',
+        realtimeCustomers.length
+      );
+    },
+
+    (error) => {
+      console.error(
+        'Realtime customers listener error:',
+        error
+      );
+    }
+  );
+  // ==========================================================
+// REALTIME SUPPLIERS LISTENER
+// ==========================================================
+const unsubscribeSuppliers = onSnapshot(
+  collection(db, 'suppliers'),
+
+  (snapshot) => {
+    const realtimeSuppliers = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    setSuppliers(realtimeSuppliers);
+
+    console.log(
+      'Realtime suppliers updated:',
+      realtimeSuppliers.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime suppliers listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME PURCHASES LISTENER
+// ==========================================================
+const unsubscribePurchases = onSnapshot(
+  collection(db, 'purchases'),
+
+  (snapshot) => {
+    const realtimePurchases = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    setPurchases(realtimePurchases);
+
+    console.log(
+      'Realtime purchases updated:',
+      realtimePurchases.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime purchases listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME INVOICES LISTENER
+// ==========================================================
+const unsubscribeInvoices = onSnapshot(
+  collection(db, 'invoices'),
+
+  (snapshot) => {
+    const realtimeInvoices = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    setInvoices(realtimeInvoices);
+
+    console.log(
+      'Realtime invoices updated:',
+      realtimeInvoices.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime invoices listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME PAYMENTS LISTENER
+// ==========================================================
+const unsubscribePayments = onSnapshot(
+  collection(db, 'payments'),
+
+  (snapshot) => {
+    const realtimePayments = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    setPayments(realtimePayments);
+
+    console.log(
+      'Realtime payments updated:',
+      realtimePayments.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime payments listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME INVENTORY LOGS LISTENER
+// ==========================================================
+const unsubscribeInventoryLogs = onSnapshot(
+  collection(db, 'inventoryLogs'),
+
+  (snapshot) => {
+    const realtimeInventoryLogs = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    setInventoryLogs(realtimeInventoryLogs);
+
+    console.log(
+      'Realtime inventory logs updated:',
+      realtimeInventoryLogs.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime inventory logs listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME CATEGORIES LISTENER
+// ==========================================================
+const unsubscribeCategories = onSnapshot(
+  doc(db, 'categories', 'config'),
+
+  (snapshot) => {
+    if (!snapshot.exists()) return;
+
+    const categoryData = snapshot.data();
+
+    if (Array.isArray(categoryData.categories)) {
+      setCategories(categoryData.categories);
+    }
+
+    console.log(
+      'Realtime categories updated:',
+      Array.isArray(categoryData.categories)
+        ? categoryData.categories.length
+        : 0
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime categories listener error:',
+      error
+    );
+  }
+);
+  // ==========================================================
+// REALTIME SETTINGS LISTENER
+// ==========================================================
+const unsubscribeSettings = onSnapshot(
+  doc(db, 'settings', 'store'),
+
+  (snapshot) => {
+    if (!snapshot.exists()) return;
+
+    setSettings(prev => ({
+      ...prev,
+      ...snapshot.data()
+    }));
+
+    console.log(
+      'Realtime settings updated'
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime settings listener error:',
+      error
+    );
+  }
+);
+ // ==========================================================
+// REALTIME INVOICE COUNTERS LISTENER
+// ==========================================================
+const unsubscribeCounters = onSnapshot(
+  doc(db, 'counters', 'invoices'),
+
+  (snapshot) => {
+    if (!snapshot.exists()) return;
+
+    const counterData = snapshot.data();
+
+    if (counterData.taxInvoiceSeq !== undefined) {
+      setTaxInvoiceSeq(
+        Number(counterData.taxInvoiceSeq)
+      );
+    }
+
+    if (counterData.retailBillSeq !== undefined) {
+      setRetailBillSeq(
+        Number(counterData.retailBillSeq)
+      );
+    }
+
+    console.log(
+      'Realtime invoice counters updated:',
+      counterData
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime invoice counters listener error:',
+      error
+    );
+  }
+);
+
+ return () => {
+  unsubscribeProducts();
+  unsubscribeCustomers();
+  unsubscribeSuppliers();
+  unsubscribePurchases();
+  unsubscribeInvoices();
+  unsubscribePayments();
+  unsubscribeInventoryLogs();
+  unsubscribeCategories();
+  unsubscribeSettings();
+  unsubscribeCounters();
+};
 }, [user]);
 
 
@@ -263,21 +541,96 @@ const logout = async () => {
   await signOut(auth);
 };
 
-  // Category Actions
-  const addCategory = (catName) => {
-    const trimmed = catName.trim();
-    if (!trimmed) return false;
-    if (categories.some(c => c.toLowerCase() === trimmed.toLowerCase())) {
-      alert(`Category "${trimmed}" already exists!`);
-      return false;
-    }
-    setCategories(prev => [...prev, trimmed]);
-    return true;
-  };
+  // ============================================================
+// CATEGORY ACTIONS - FIRESTORE
+// ============================================================
 
-  const deleteCategory = (catName) => {
-    setCategories(prev => prev.filter(c => c.toLowerCase() !== catName.toLowerCase()));
-  };
+const addCategory = async (catName) => {
+  const trimmed = catName.trim();
+
+  if (!trimmed) return false;
+
+  if (
+    categories.some(
+      c => c.toLowerCase() === trimmed.toLowerCase()
+    )
+  ) {
+    alert(`Category "${trimmed}" already exists!`);
+    return false;
+  }
+
+  const updatedCategories = [
+    ...categories,
+    trimmed
+  ];
+
+  try {
+    await setDoc(
+      doc(db, 'categories', 'config'),
+      {
+        categories: updatedCategories,
+        updatedAt: new Date().toISOString()
+      },
+      { merge: true }
+    );
+
+    setCategories(updatedCategories);
+
+    console.log(
+      'Category saved to Firestore:',
+      trimmed
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error saving category to Firestore:',
+      error
+    );
+
+    alert('Failed to save category to Firebase.');
+
+    return false;
+  }
+};
+
+
+const deleteCategory = async (catName) => {
+  const updatedCategories = categories.filter(
+    c => c.toLowerCase() !== catName.toLowerCase()
+  );
+
+  try {
+    await setDoc(
+      doc(db, 'categories', 'config'),
+      {
+        categories: updatedCategories,
+        updatedAt: new Date().toISOString()
+      },
+      { merge: true }
+    );
+
+    setCategories(updatedCategories);
+
+    console.log(
+      'Category deleted from Firestore:',
+      catName
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting category from Firestore:',
+      error
+    );
+
+    alert('Failed to delete category from Firebase.');
+
+    return false;
+  }
+};
 
   // Apply theme to document element
   useEffect(() => {
@@ -390,33 +743,127 @@ const logout = async () => {
   }
 };
 
-  const adjustStock = (productId, changeQty, reason, type = 'Manual Adjustment') => {
-    let affectedProdName = '';
-    setProducts(prev => prev.map(p => {
-      if (p.id === productId) {
-        affectedProdName = p.name;
-        const previousStock = p.stock;
-        const newStock = Math.max(0, previousStock + changeQty);
-        
-        // Add audit log entry
+  const adjustStock = async (
+  productId,
+  changeQty,
+  reason,
+  type = 'Manual Adjustment'
+) => {
+  try {
+    const result = await runTransaction(
+      db,
+      async (transaction) => {
+
+        const productRef = doc(
+          db,
+          'products',
+          productId
+        );
+
+        const productSnap =
+          await transaction.get(productRef);
+
+        if (!productSnap.exists()) {
+          throw new Error(
+            'Product not found in Firebase.'
+          );
+        }
+
+        const productData =
+          productSnap.data();
+
+        const previousStock =
+          Number(productData.stock) || 0;
+
+        const qtyChange =
+          Number(changeQty) || 0;
+
+        const newStock = Math.max(
+          0,
+          previousStock + qtyChange
+        );
+
+        const logId =
+          `LOG-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
         const log = {
-          id: `LOG-${Date.now()}-${Math.floor(Math.random()*100)}`,
-          date: new Date().toISOString().slice(0, 10),
+          id: logId,
+          date: new Date()
+            .toISOString()
+            .slice(0, 10),
           productId,
-          productName: p.name,
-          changeQty,
+          productName:
+            productData.name || '',
+          changeQty: qtyChange,
           previousStock,
           newStock,
           type,
           reason
         };
-        setInventoryLogs(logs => [log, ...logs]);
 
-        return { ...p, stock: newStock };
+        transaction.update(
+          productRef,
+          {
+            stock: newStock
+          }
+        );
+
+        transaction.set(
+          doc(
+            db,
+            'inventoryLogs',
+            logId
+          ),
+          log
+        );
+
+        return {
+          productId,
+          newStock,
+          log
+        };
       }
-      return p;
-    }));
-  };
+    );
+
+    setProducts(prev =>
+      prev.map(product =>
+        product.id === result.productId
+          ? {
+              ...product,
+              stock: result.newStock
+            }
+          : product
+      )
+    );
+
+    setInventoryLogs(prev => [
+      result.log,
+      ...prev
+    ]);
+
+    console.log(
+      'Stock adjustment saved to Firestore:',
+      result.log.id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error adjusting stock in Firestore:',
+      error
+    );
+
+    alert(
+      `Stock adjustment failed.\n\n${
+        error.message ||
+        'Firebase transaction failed.'
+      }`
+    );
+
+    return false;
+  }
+};
 
   const getNextInvoiceNumber = (gstType = 'GST') => {
     if (gstType === 'GST') {
@@ -428,229 +875,1161 @@ const logout = async () => {
     }
   };
 
-  // Create Invoice (Sale)
-  const createInvoice = (invoiceData) => {
-    const isTaxInvoice = (invoiceData.gstType === 'GST');
-    let invoiceNumber = '';
-    
-    if (isTaxInvoice) {
-      const prefix = settings.taxInvoicePrefix || 'TAX-';
-      invoiceNumber = `${prefix}${taxInvoiceSeq}`;
-      setTaxInvoiceSeq(prev => prev + 1);
-    } else {
-      const prefix = settings.retailBillPrefix || 'RET-';
-      invoiceNumber = `${prefix}${retailBillSeq}`;
-      setRetailBillSeq(prev => prev + 1);
-    }
+  // ============================================================
+// CREATE INVOICE - FIRESTORE ATOMIC TRANSACTION
+// ============================================================
 
-    const newInvoice = {
-      ...invoiceData,
-      id: `INV-${Date.now()}`,
-      invoiceNumber,
-      date: new Date().toISOString().slice(0, 10),
-      createdBy: user ? user.name : 'Staff Cashier',
-    };
+const createInvoice = async (invoiceData) => {
+  const isTaxInvoice = invoiceData.gstType === 'GST';
 
-    // 1. Deduct Stock for each item
-    newInvoice.items.forEach(item => {
-      adjustStock(item.productId, -Number(item.qty), `Invoice #${newInvoice.invoiceNumber}`, 'Sale');
+  const invoiceId = `INV-${Date.now()}`;
+  const paymentId = `PAY-${Date.now()}`;
+
+  const inventoryLogIds = invoiceData.items.map(
+    (_, index) => `LOG-${Date.now()}-${index}`
+  );
+
+  try {
+    const result = await runTransaction(db, async (transaction) => {
+
+      // --------------------------------------------------------
+      // 1. Read invoice counter
+      // --------------------------------------------------------
+      const counterRef = doc(db, 'counters', 'invoices');
+      const counterSnap = await transaction.get(counterRef);
+
+      const counterData = counterSnap.exists()
+        ? counterSnap.data()
+        : {};
+
+      const currentTaxSeq =
+        Number(counterData.taxInvoiceSeq) || 1001;
+
+      const currentRetailSeq =
+        Number(counterData.retailBillSeq) || 1001;
+
+      let invoiceNumber;
+
+      if (isTaxInvoice) {
+        const prefix = settings.taxInvoicePrefix || 'TAX-';
+        invoiceNumber = `${prefix}${currentTaxSeq}`;
+      } else {
+        const prefix = settings.retailBillPrefix || 'RET-';
+        invoiceNumber = `${prefix}${currentRetailSeq}`;
+      }
+
+      // --------------------------------------------------------
+      // 2. Read all product documents
+      // --------------------------------------------------------
+      const productSnapshots = [];
+
+      for (const item of invoiceData.items) {
+        const productRef = doc(db, 'products', item.productId);
+        const productSnap = await transaction.get(productRef);
+
+        if (!productSnap.exists()) {
+          throw new Error(
+            `Product not found in Firebase: ${item.productId}`
+          );
+        }
+
+        productSnapshots.push({
+          item,
+          ref: productRef,
+          snap: productSnap
+        });
+      }
+
+      // --------------------------------------------------------
+      // 3. Read customer document if not walk-in
+      // --------------------------------------------------------
+      let customerRef = null;
+      let customerSnap = null;
+
+      if (
+        invoiceData.customerId &&
+        invoiceData.customerId !== 'WALK-IN'
+      ) {
+        customerRef = doc(
+          db,
+          'customers',
+          invoiceData.customerId
+        );
+
+        customerSnap = await transaction.get(customerRef);
+
+        if (!customerSnap.exists()) {
+          throw new Error('Customer not found in Firebase.');
+        }
+      }
+
+      // --------------------------------------------------------
+      // 4. Prepare invoice
+      // --------------------------------------------------------
+      const newInvoice = {
+        ...invoiceData,
+        id: invoiceId,
+        invoiceNumber,
+        date: new Date().toISOString().slice(0, 10),
+        createdBy: user ? user.name : 'Staff Cashier'
+      };
+
+      // --------------------------------------------------------
+      // 5. Save invoice
+      // --------------------------------------------------------
+      transaction.set(
+        doc(db, 'invoices', invoiceId),
+        newInvoice
+      );
+
+      // --------------------------------------------------------
+      // 6. Deduct stock + create inventory logs
+      // --------------------------------------------------------
+      const updatedProducts = [];
+      const newInventoryLogs = [];
+
+      productSnapshots.forEach((entry, index) => {
+        const productData = entry.snap.data();
+
+        const previousStock = Number(productData.stock) || 0;
+
+        const changeQty = -Number(entry.item.qty);
+
+        const newStock = Math.max(
+          0,
+          previousStock + changeQty
+        );
+
+        transaction.update(
+          entry.ref,
+          {
+            stock: newStock
+          }
+        );
+
+        const log = {
+          id: inventoryLogIds[index],
+          date: new Date().toISOString().slice(0, 10),
+          productId: entry.item.productId,
+          productName:
+            productData.name || entry.item.name || '',
+          changeQty,
+          previousStock,
+          newStock,
+          type: 'Sale',
+          reason: `Invoice #${invoiceNumber}`
+        };
+
+        transaction.set(
+          doc(db, 'inventoryLogs', log.id),
+          log
+        );
+
+        updatedProducts.push({
+          id: entry.item.productId,
+          stock: newStock
+        });
+
+        newInventoryLogs.push(log);
+      });
+
+      // --------------------------------------------------------
+      // 7. Update customer
+      // --------------------------------------------------------
+      let updatedCustomer = null;
+
+      if (customerRef && customerSnap) {
+        const customerData = customerSnap.data();
+
+        const totalOrders =
+          (Number(customerData.totalOrders) || 0) + 1;
+
+        const totalSpent =
+          (Number(customerData.totalSpent) || 0) +
+          Number(newInvoice.total);
+
+        const balanceDue =
+           Number(newInvoice.balanceDue) || 0;
+
+        const customerUpdate = {
+           totalOrders,
+           totalSpent
+        };
+
+        if (balanceDue > 0) {
+          customerUpdate.outstanding =
+            (Number(customerData.outstanding) || 0) +
+            balanceDue;
+        }
+
+        transaction.update(
+          customerRef,
+          customerUpdate
+        );
+
+        updatedCustomer = {
+          id: invoiceData.customerId,
+          ...customerUpdate
+        };
+      }
+
+      // --------------------------------------------------------
+      // 8. Save payment if invoice is paid
+      // --------------------------------------------------------
+      let payRecord = null;
+
+      const amountPaid =
+        Number(newInvoice.amountPaid) || 0;
+
+      if (amountPaid > 0) {
+        payRecord = {
+          id: paymentId,
+          date: new Date().toISOString().slice(0, 10),
+          type: 'IN',
+          entityName:
+             newInvoice.customerName || 'Walk-in Customer',
+          amount: amountPaid,
+          mode: newInvoice.paymentMode,
+          reference: newInvoice.invoiceNumber
+        };
+      }
+
+      // --------------------------------------------------------
+      // 9. Increment correct invoice counter
+      // --------------------------------------------------------
+      const updatedCounter = isTaxInvoice
+        ? {
+            taxInvoiceSeq: currentTaxSeq + 1,
+            retailBillSeq: currentRetailSeq
+          }
+        : {
+            taxInvoiceSeq: currentTaxSeq,
+            retailBillSeq: currentRetailSeq + 1
+          };
+
+      transaction.set(
+        counterRef,
+        updatedCounter,
+        { merge: true }
+      );
+
+      return {
+        newInvoice,
+        updatedProducts,
+        newInventoryLogs,
+        updatedCustomer,
+        payRecord,
+        updatedCounter
+      };
     });
 
-    // 2. Add Invoice
-    setInvoices(prev => [newInvoice, ...prev]);
+    // ----------------------------------------------------------
+    // Firebase transaction succeeded.
+    // Now update React state.
+    // ----------------------------------------------------------
 
-    // 3. Update Customer Outstanding if payment status is UNPAID or Credit
-    if (newInvoice.paymentMode === 'Credit' || newInvoice.paymentStatus === 'UNPAID') {
-      setCustomers(prev => prev.map(c => {
-        if (c.id === newInvoice.customerId) {
-          return {
-            ...c,
-            totalOrders: (c.totalOrders || 0) + 1,
-            totalSpent: (c.totalSpent || 0) + newInvoice.total,
-            outstanding: (c.outstanding || 0) + newInvoice.total
-          };
-        }
-        return c;
-      }));
-    } else {
-      // Payment received immediately
-      setCustomers(prev => prev.map(c => {
-        if (c.id === newInvoice.customerId) {
-          return {
-            ...c,
-            totalOrders: (c.totalOrders || 0) + 1,
-            totalSpent: (c.totalSpent || 0) + newInvoice.total
-          };
-        }
-        return c;
-      }));
+    setInvoices(prev => [
+      result.newInvoice,
+      ...prev
+    ]);
 
-      // Record in ledger
-      const payRecord = {
-        id: `PAY-${Date.now()}`,
-        date: new Date().toISOString().slice(0, 10),
-        type: 'IN',
-        entityName: newInvoice.customerName || 'Walk-in Customer',
-        amount: newInvoice.total,
-        mode: newInvoice.paymentMode,
-        reference: newInvoice.invoiceNumber
-      };
-      setPayments(prev => [payRecord, ...prev]);
+    setProducts(prev =>
+      prev.map(product => {
+        const updated = result.updatedProducts.find(
+          p => p.id === product.id
+        );
+
+        return updated
+          ? {
+              ...product,
+              stock: updated.stock
+            }
+          : product;
+      })
+    );
+
+    setInventoryLogs(prev => [
+      ...result.newInventoryLogs,
+      ...prev
+    ]);
+
+    if (result.updatedCustomer) {
+      setCustomers(prev =>
+        prev.map(customer =>
+          customer.id === result.updatedCustomer.id
+            ? {
+                ...customer,
+                ...result.updatedCustomer
+              }
+            : customer
+        )
+      );
     }
 
-    return newInvoice;
+    if (result.payRecord) {
+      setPayments(prev => [
+        result.payRecord,
+        ...prev
+      ]);
+    }
+
+    setTaxInvoiceSeq(
+      result.updatedCounter.taxInvoiceSeq
+    );
+
+    setRetailBillSeq(
+      result.updatedCounter.retailBillSeq
+    );
+
+    console.log(
+      'Invoice saved to Firestore:',
+      result.newInvoice.invoiceNumber
+    );
+
+    return result.newInvoice;
+
+  } catch (error) {
+    console.error(
+      'Error creating invoice in Firestore:',
+      error
+    );
+
+    alert(
+      `Invoice was NOT created.\n\n${error.message || 'Firebase transaction failed.'}`
+    );
+
+    return null;
+  }
+};
+
+  // ============================================================
+// CUSTOMER MANAGEMENT - FIRESTORE
+// ============================================================
+
+const addCustomer = async (custData) => {
+  const newCust = {
+    ...custData,
+    id: `CUST-${Date.now().toString().slice(-4)}`,
+    totalOrders: 0,
+    totalSpent: 0,
+    outstanding: Number(custData.outstanding) || 0
   };
 
-  // Customer Management
-  const addCustomer = (custData) => {
-    const newCust = {
-      ...custData,
-      id: `CUST-${Date.now().toString().slice(-4)}`,
-      totalOrders: 0,
-      totalSpent: 0,
-      outstanding: Number(custData.outstanding) || 0
-    };
+  try {
+    await setDoc(
+      doc(db, 'customers', newCust.id),
+      newCust
+    );
+
     setCustomers(prev => [newCust, ...prev]);
+
+    console.log(
+      'Customer saved to Firestore:',
+      newCust.id
+    );
+
     return newCust;
+
+  } catch (error) {
+    console.error(
+      'Error saving customer to Firestore:',
+      error
+    );
+
+    alert('Failed to save customer to Firebase.');
+
+    return null;
+  }
+};
+
+
+const updateCustomer = async (id, updatedCust) => {
+  try {
+    await updateDoc(
+      doc(db, 'customers', id),
+      updatedCust
+    );
+
+    setCustomers(prev =>
+      prev.map(c =>
+        c.id === id
+          ? { ...c, ...updatedCust }
+          : c
+      )
+    );
+
+    console.log(
+      'Customer updated in Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error updating customer in Firestore:',
+      error
+    );
+
+    alert('Failed to update customer in Firebase.');
+
+    return false;
+  }
+};
+
+
+const deleteCustomer = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'customers', id)
+    );
+
+    setCustomers(prev =>
+      prev.filter(c => c.id !== id)
+    );
+
+    console.log(
+      'Customer deleted from Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting customer from Firestore:',
+      error
+    );
+
+    alert('Failed to delete customer from Firebase.');
+
+    return false;
+  }
+};
+  const recordCustomerPayment = async (customerId, amount, mode, note) => {
+  const payAmt = Number(amount);
+
+  const customer = customers.find(c => c.id === customerId);
+
+  if (!customer) {
+    alert('Customer not found.');
+    return false;
+  }
+
+  const updatedOutstanding = Math.max(
+    0,
+    (customer.outstanding || 0) - payAmt
+  );
+
+  const payRecord = {
+    id: `PAY-${Date.now()}`,
+    date: new Date().toISOString().slice(0, 10),
+    type: 'IN',
+    entityName: customer.name,
+    amount: payAmt,
+    mode: mode || 'Cash',
+    reference: note || 'Outstanding Balance Payment'
   };
 
-  const updateCustomer = (id, updatedCust) => {
-    setCustomers(prev => prev.map(c => c.id === id ? { ...c, ...updatedCust } : c));
-  };
+  try {
+    const batch = writeBatch(db);
 
-  const deleteCustomer = (id) => {
-    setCustomers(prev => prev.filter(c => c.id !== id));
-  };
-
-  const recordCustomerPayment = (customerId, amount, mode, note) => {
-    const payAmt = Number(amount);
-    let custName = '';
-    setCustomers(prev => prev.map(c => {
-      if (c.id === customerId) {
-        custName = c.name;
-        return {
-          ...c,
-          outstanding: Math.max(0, (c.outstanding || 0) - payAmt)
-        };
+    // Update customer outstanding
+    batch.update(
+      doc(db, 'customers', customerId),
+      {
+        outstanding: updatedOutstanding
       }
-      return c;
-    }));
+    );
 
-    const payRecord = {
-      id: `PAY-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      type: 'IN',
-      entityName: custName,
-      amount: payAmt,
-      mode: mode || 'Cash',
-      reference: note || 'Outstanding Balance Payment'
-    };
-    setPayments(prev => [payRecord, ...prev]);
+    // Save payment record
+    batch.set(
+      doc(db, 'payments', payRecord.id),
+      payRecord
+    );
+
+    await batch.commit();
+
+    // Update local React state after Firebase succeeds
+    setCustomers(prev =>
+      prev.map(c =>
+        c.id === customerId
+          ? {
+              ...c,
+              outstanding: updatedOutstanding
+            }
+          : c
+      )
+    );
+
+    setPayments(prev => [
+      payRecord,
+      ...prev
+    ]);
+
+    console.log(
+      'Customer payment saved to Firestore:',
+      payRecord.id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error saving customer payment to Firestore:',
+      error
+    );
+
+    alert('Failed to save customer payment to Firebase.');
+
+    return false;
+  }
+};
+
+  // ============================================================
+// SUPPLIER MANAGEMENT - FIRESTORE
+// ============================================================
+
+const addSupplier = async (suppData) => {
+  const newSupp = {
+    ...suppData,
+    id: `SUPP-${Date.now().toString().slice(-4)}`,
+    totalPurchases: 0,
+    payable: Number(suppData.payable) || 0
   };
 
-  // Supplier Management
-  const addSupplier = (suppData) => {
-    const newSupp = {
-      ...suppData,
-      id: `SUPP-${Date.now().toString().slice(-4)}`,
-      totalPurchases: 0,
-      payable: Number(suppData.payable) || 0
-    };
+  try {
+    await setDoc(
+      doc(db, 'suppliers', newSupp.id),
+      newSupp
+    );
+
     setSuppliers(prev => [newSupp, ...prev]);
+
+    console.log(
+      'Supplier saved to Firestore:',
+      newSupp.id
+    );
+
     return newSupp;
+
+  } catch (error) {
+    console.error(
+      'Error saving supplier to Firestore:',
+      error
+    );
+
+    alert('Failed to save supplier to Firebase.');
+
+    return null;
+  }
+};
+
+
+const updateSupplier = async (id, updatedSupp) => {
+  try {
+    await updateDoc(
+      doc(db, 'suppliers', id),
+      updatedSupp
+    );
+
+    setSuppliers(prev =>
+      prev.map(s =>
+        s.id === id
+          ? { ...s, ...updatedSupp }
+          : s
+      )
+    );
+
+    console.log(
+      'Supplier updated in Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error updating supplier in Firestore:',
+      error
+    );
+
+    alert('Failed to update supplier in Firebase.');
+
+    return false;
+  }
+};
+
+
+const deleteSupplier = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'suppliers', id)
+    );
+
+    setSuppliers(prev =>
+      prev.filter(s => s.id !== id)
+    );
+
+    console.log(
+      'Supplier deleted from Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting supplier from Firestore:',
+      error
+    );
+
+    alert('Failed to delete supplier from Firebase.');
+
+    return false;
+  }
+};
+
+  const deleteInvoice = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'invoices', id)
+    );
+
+    setInvoices(prev =>
+      prev.filter(inv => inv.id !== id)
+    );
+
+    console.log(
+      'Invoice deleted from Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting invoice from Firestore:',
+      error
+    );
+
+    alert('Failed to delete invoice from Firebase.');
+
+    return false;
+  }
+};
+
+  const deleteInventoryLog = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'inventoryLogs', id)
+    );
+
+    setInventoryLogs(prev =>
+      prev.filter(log => log.id !== id)
+    );
+
+    console.log(
+      'Inventory log deleted from Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting inventory log from Firestore:',
+      error
+    );
+
+    alert(
+      'Failed to delete inventory log from Firebase.'
+    );
+
+    return false;
+  }
+};
+
+  const deletePayment = async (id) => {
+  try {
+    await deleteDoc(
+      doc(db, 'payments', id)
+    );
+
+    setPayments(prev =>
+      prev.filter(pay => pay.id !== id)
+    );
+
+    console.log(
+      'Payment deleted from Firestore:',
+      id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error deleting payment from Firestore:',
+      error
+    );
+
+    alert(
+      'Failed to delete payment from Firebase.'
+    );
+
+    return false;
+  }
+};
+
+  const recordSupplierPayment = async (
+  supplierId,
+  amount,
+  mode,
+  note
+) => {
+  const payAmt = Number(amount);
+
+  const supplier = suppliers.find(
+    s => s.id === supplierId
+  );
+
+  if (!supplier) {
+    alert('Supplier not found.');
+    return false;
+  }
+
+  const updatedPayable = Math.max(
+    0,
+    (Number(supplier.payable) || 0) - payAmt
+  );
+
+  const payRecord = {
+    id: `PAY-${Date.now()}`,
+    date: new Date().toISOString().slice(0, 10),
+    type: 'OUT',
+    entityName: supplier.name,
+    amount: payAmt,
+    mode: mode || 'Bank Transfer',
+    reference: note || 'Supplier Payment'
   };
 
-  const updateSupplier = (id, updatedSupp) => {
-    setSuppliers(prev => prev.map(s => s.id === id ? { ...s, ...updatedSupp } : s));
-  };
+  try {
+    const batch = writeBatch(db);
 
-  const deleteSupplier = (id) => {
-    setSuppliers(prev => prev.filter(s => s.id !== id));
-  };
+    batch.update(
+      doc(db, 'suppliers', supplierId),
+      {
+        payable: updatedPayable
+      }
+    );
 
-  const deleteInvoice = (id) => {
-    setInvoices(prev => prev.filter(inv => inv.id !== id));
-  };
+    batch.set(
+      doc(db, 'payments', payRecord.id),
+      payRecord
+    );
 
-  const deleteInventoryLog = (id) => {
-    setInventoryLogs(prev => prev.filter(log => log.id !== id));
-  };
+    await batch.commit();
 
-  const deletePayment = (id) => {
-    setPayments(prev => prev.filter(pay => pay.id !== id));
-  };
+    setSuppliers(prev =>
+      prev.map(s =>
+        s.id === supplierId
+          ? {
+              ...s,
+              payable: updatedPayable
+            }
+          : s
+      )
+    );
 
-  const recordSupplierPayment = (supplierId, amount, mode, note) => {
-    const payAmt = Number(amount);
-    let suppName = '';
-    setSuppliers(prev => prev.map(s => {
-      if (s.id === supplierId) {
-        suppName = s.name;
+    setPayments(prev => [
+      payRecord,
+      ...prev
+    ]);
+
+    console.log(
+      'Supplier payment saved to Firestore:',
+      payRecord.id
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error saving supplier payment to Firestore:',
+      error
+    );
+
+    alert('Failed to save supplier payment to Firebase.');
+
+    return false;
+  }
+};
+
+  // ============================================================
+// CREATE PURCHASE - FIRESTORE ATOMIC TRANSACTION
+// ============================================================
+
+const createPurchase = async (purchaseData) => {
+  const timestamp = Date.now();
+
+  const purchaseId = `PUR-${timestamp}`;
+  const poNumber = `PO-${timestamp.toString().slice(-4)}`;
+  const paymentId = `PAY-${timestamp}`;
+
+  const inventoryLogIds = purchaseData.items.map(
+    (_, index) => `LOG-${timestamp}-PUR-${index}`
+  );
+
+  try {
+    const result = await runTransaction(
+      db,
+      async (transaction) => {
+
+        // ------------------------------------------------------
+        // 1. Read supplier
+        // ------------------------------------------------------
+        const supplierRef = doc(
+          db,
+          'suppliers',
+          purchaseData.supplierId
+        );
+
+        const supplierSnap =
+          await transaction.get(supplierRef);
+
+        if (!supplierSnap.exists()) {
+          throw new Error(
+            'Supplier not found in Firebase.'
+          );
+        }
+
+        const supplierData =
+          supplierSnap.data();
+
+        // ------------------------------------------------------
+        // 2. Read all products
+        // ------------------------------------------------------
+        const productSnapshots = [];
+
+        for (const item of purchaseData.items) {
+          const productRef = doc(
+            db,
+            'products',
+            item.productId
+          );
+
+          const productSnap =
+            await transaction.get(productRef);
+
+          if (!productSnap.exists()) {
+            throw new Error(
+              `Product not found in Firebase: ${item.productId}`
+            );
+          }
+
+          productSnapshots.push({
+            item,
+            ref: productRef,
+            snap: productSnap
+          });
+        }
+
+        // ------------------------------------------------------
+        // 3. Prepare purchase
+        // ------------------------------------------------------
+        const newPO = {
+          ...purchaseData,
+          id: purchaseId,
+          poNumber,
+          date: new Date()
+            .toISOString()
+            .slice(0, 10),
+          createdBy:
+            user?.name || 'Admin'
+        };
+
+        // ------------------------------------------------------
+        // 4. Save purchase
+        // ------------------------------------------------------
+        transaction.set(
+          doc(db, 'purchases', purchaseId),
+          newPO
+        );
+
+        // ------------------------------------------------------
+        // 5. Increase stock + inventory logs
+        // ------------------------------------------------------
+        const updatedProducts = [];
+        const newInventoryLogs = [];
+
+        productSnapshots.forEach(
+          (entry, index) => {
+
+            const productData =
+              entry.snap.data();
+
+            const previousStock =
+              Number(productData.stock) || 0;
+
+            const changeQty =
+              Number(entry.item.qty) || 0;
+
+            const newStock =
+              previousStock + changeQty;
+
+            transaction.update(
+              entry.ref,
+              {
+                stock: newStock
+              }
+            );
+
+            const log = {
+              id: inventoryLogIds[index],
+
+              date: new Date()
+                .toISOString()
+                .slice(0, 10),
+
+              productId:
+                entry.item.productId,
+
+              productName:
+                productData.name ||
+                entry.item.name ||
+                '',
+
+              changeQty,
+              previousStock,
+              newStock,
+
+              type: 'Stock In',
+
+              reason:
+                `Purchase Order #${poNumber}`
+            };
+
+            transaction.set(
+              doc(
+                db,
+                'inventoryLogs',
+                log.id
+              ),
+              log
+            );
+
+            updatedProducts.push({
+              id: entry.item.productId,
+              stock: newStock
+            });
+
+            newInventoryLogs.push(log);
+          }
+        );
+
+               // ------------------------------------------------------
+        // 6. Update supplier
+        // ------------------------------------------------------
+        const purchaseTotal =
+          Number(purchaseData.total) || 0;
+
+        const amountPaid = Math.min(
+          Math.max(
+            Number(purchaseData.amountPaid) || 0,
+            0
+          ),
+          purchaseTotal
+        );
+
+        const balanceDue = Math.max(
+          0,
+          purchaseTotal - amountPaid
+        );
+
+        const paymentStatus =
+          balanceDue <= 0
+            ? 'PAID'
+            : amountPaid > 0
+              ? 'PARTIAL'
+              : 'UNPAID';
+
+        const updatedTotalPurchases =
+          (Number(
+            supplierData.totalPurchases
+          ) || 0) + purchaseTotal;
+
+        const updatedPayable =
+          (Number(
+            supplierData.payable
+          ) || 0) + balanceDue;
+
+        transaction.update(
+          supplierRef,
+          {
+            totalPurchases:
+              updatedTotalPurchases,
+
+            payable:
+              updatedPayable
+          }
+        );
+
+        // ------------------------------------------------------
+        // 7. Payment record if any amount was paid
+        // ------------------------------------------------------
+        let payRecord = null;
+
+        if (amountPaid > 0) {
+          payRecord = {
+            id: paymentId,
+
+            date: new Date()
+              .toISOString()
+              .slice(0, 10),
+
+            type: 'OUT',
+
+            entityName:
+              purchaseData.supplierName,
+
+            supplierId:
+              purchaseData.supplierId,
+
+            purchaseId,
+
+            amount:
+              amountPaid,
+
+            mode:
+              purchaseData.paymentMode ||
+              'Cash',
+
+            reference:
+              purchaseData.supplierInvoiceNo
+                ? `${poNumber} / ${purchaseData.supplierInvoiceNo}`
+                : poNumber
+          };
+
+          transaction.set(
+            doc(
+              db,
+              'payments',
+              paymentId
+            ),
+            payRecord
+          );
+        }
+
+        // ------------------------------------------------------
+        // 8. Ensure normalized payment values are saved
+        // ------------------------------------------------------
+        transaction.update(
+          doc(db, 'purchases', purchaseId),
+          {
+            amountPaid,
+            balanceDue,
+            paymentStatus,
+            paymentMode:
+              amountPaid > 0
+                ? purchaseData.paymentMode || 'Cash'
+                : 'Credit'
+          }
+        );
+
         return {
-          ...s,
-          payable: Math.max(0, (s.payable || 0) - payAmt)
+          newPO,
+          updatedProducts,
+          newInventoryLogs,
+
+          updatedSupplier: {
+            id:
+              purchaseData.supplierId,
+
+            totalPurchases:
+              updatedTotalPurchases,
+
+            payable:
+              updatedPayable
+          },
+
+          payRecord
         };
       }
-      return s;
-    }));
+    );
 
-    const payRecord = {
-      id: `PAY-${Date.now()}`,
-      date: new Date().toISOString().slice(0, 10),
-      type: 'OUT',
-      entityName: suppName,
-      amount: payAmt,
-      mode: mode || 'Bank Transfer',
-      reference: note || 'Supplier Payment'
-    };
-    setPayments(prev => [payRecord, ...prev]);
-  };
+    // ----------------------------------------------------------
+    // Firestore succeeded → update React state
+    // ----------------------------------------------------------
 
-  // Create Purchase Entry
-  const createPurchase = (purchaseData) => {
-    const poNumber = `PO-${Date.now().toString().slice(-4)}`;
-    const newPO = {
-      ...purchaseData,
-      id: `PUR-${Date.now()}`,
-      poNumber,
-      date: new Date().toISOString().slice(0, 10),
-    };
+    setPurchases(prev => [
+      result.newPO,
+      ...prev
+    ]);
 
-    // Add stock
-    purchaseData.items.forEach(item => {
-      adjustStock(item.productId, Number(item.qty), `Purchase Order #${poNumber}`, 'Stock In');
-    });
+    setProducts(prev =>
+      prev.map(product => {
 
-    setPurchases(prev => [newPO, ...prev]);
+        const updated =
+          result.updatedProducts.find(
+            p => p.id === product.id
+          );
 
-    // Update Supplier Payable
-    setSuppliers(prev => prev.map(s => {
-      if (s.id === purchaseData.supplierId) {
-        return {
-          ...s,
-          totalPurchases: (s.totalPurchases || 0) + purchaseData.total,
-          payable: (s.payable || 0) + (purchaseData.isPaid ? 0 : purchaseData.total)
-        };
-      }
-      return s;
-    }));
+        return updated
+          ? {
+              ...product,
+              stock: updated.stock
+            }
+          : product;
+      })
+    );
 
-    if (purchaseData.isPaid) {
-      const payRecord = {
-        id: `PAY-${Date.now()}`,
-        date: new Date().toISOString().slice(0, 10),
-        type: 'OUT',
-        entityName: purchaseData.supplierName,
-        amount: purchaseData.total,
-        mode: purchaseData.paymentMode || 'Bank',
-        reference: poNumber
-      };
-      setPayments(prev => [payRecord, ...prev]);
+    setInventoryLogs(prev => [
+      ...result.newInventoryLogs,
+      ...prev
+    ]);
+
+    setSuppliers(prev =>
+      prev.map(supplier =>
+        supplier.id ===
+        result.updatedSupplier.id
+          ? {
+              ...supplier,
+              ...result.updatedSupplier
+            }
+          : supplier
+      )
+    );
+
+    if (result.payRecord) {
+      setPayments(prev => [
+        result.payRecord,
+        ...prev
+      ]);
     }
 
-    return newPO;
-  };
+    console.log(
+      'Purchase saved to Firestore:',
+      result.newPO.poNumber
+    );
 
+    return result.newPO;
+
+  } catch (error) {
+    console.error(
+      'Error creating purchase in Firestore:',
+      error
+    );
+
+    alert(
+      `Purchase was NOT created.\n\n${
+        error.message ||
+        'Firebase transaction failed.'
+      }`
+    );
+
+    return null;
+  }
+};
   const toggleTheme = () => {
     setSettings(prev => ({
       ...prev,
@@ -658,9 +2037,83 @@ const logout = async () => {
     }));
   };
 
-  const updateSettings = (newSet) => {
-    setSettings(prev => ({ ...prev, ...newSet }));
-  };
+  const updateSettings = async (newSet) => {
+  try {
+    const updatedSettings = {
+      ...settings,
+      ...newSet
+    };
+
+    await setDoc(
+      doc(db, 'settings', 'store'),
+      updatedSettings,
+      { merge: true }
+    );
+
+    setSettings(updatedSettings);
+
+    console.log(
+      'Settings updated in Firestore'
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error updating settings in Firestore:',
+      error
+    );
+
+    alert(
+      'Failed to save settings to Firebase.'
+    );
+
+    return false;
+  }
+};
+
+const updateInvoiceCounters = async (
+  newTaxSeq,
+  newRetailSeq
+) => {
+  try {
+    const taxSeq =
+      Number(newTaxSeq) || 1001;
+
+    const retailSeq =
+      Number(newRetailSeq) || 1001;
+
+    await setDoc(
+      doc(db, 'counters', 'invoices'),
+      {
+        taxInvoiceSeq: taxSeq,
+        retailBillSeq: retailSeq
+      },
+      { merge: true }
+    );
+
+    setTaxInvoiceSeq(taxSeq);
+    setRetailBillSeq(retailSeq);
+
+    console.log(
+      'Invoice counters updated in Firestore'
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error updating invoice counters:',
+      error
+    );
+
+    alert(
+      'Failed to update invoice counters in Firebase.'
+    );
+
+    return false;
+  }
+};
   // ============================================================
   // ONE-TIME PRODUCTION DATA MIGRATION
   // Copies current browser localStorage data to Firestore.
@@ -883,17 +2336,24 @@ const logout = async () => {
 
   const exportDataJSON = () => {
     const data = {
-      products,
-      customers,
-      suppliers,
-      invoices,
-      purchases,
-      inventoryLogs,
-      payments,
-      settings,
-      version: '1.0.0',
-      exportedAt: new Date().toISOString()
-    };
+  products,
+  customers,
+  suppliers,
+  invoices,
+  purchases,
+  inventoryLogs,
+  payments,
+  categories,
+  settings,
+
+  counters: {
+    taxInvoiceSeq,
+    retailBillSeq
+  },
+
+  version: '2.0.0',
+  exportedAt: new Date().toISOString()
+};
 
     const jsonStr = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json' });
@@ -907,24 +2367,168 @@ const logout = async () => {
     URL.revokeObjectURL(url);
   };
 
-  const importDataJSON = (jsonString) => {
-    try {
-      const parsed = JSON.parse(jsonString);
-      if (parsed.products) setProducts(parsed.products);
-      if (parsed.customers) setCustomers(parsed.customers);
-      if (parsed.suppliers) setSuppliers(parsed.suppliers);
-      if (parsed.invoices) setInvoices(parsed.invoices);
-      if (parsed.purchases) setPurchases(parsed.purchases);
-      if (parsed.inventoryLogs) setInventoryLogs(parsed.inventoryLogs);
-      if (parsed.payments) setPayments(parsed.payments);
-      if (parsed.settings) setSettings(parsed.settings);
-      alert('Data imported and restored successfully!');
-      return true;
-    } catch (err) {
-      alert('Invalid backup file format. Please choose a valid H BILLS JSON backup.');
-      return false;
+  const importDataJSON = async (jsonString) => {
+  try {
+    const parsed = JSON.parse(jsonString);
+
+    const restoreCollection = async (
+      collectionName,
+      records = []
+    ) => {
+      for (let i = 0; i < records.length; i += 500) {
+        const batch = writeBatch(db);
+
+        records
+          .slice(i, i + 500)
+          .forEach(record => {
+            if (!record?.id) return;
+
+            batch.set(
+              doc(db, collectionName, record.id),
+              record,
+              { merge: true }
+            );
+          });
+
+        await batch.commit();
+      }
+    };
+
+    await restoreCollection(
+      'products',
+      parsed.products || []
+    );
+
+    await restoreCollection(
+      'customers',
+      parsed.customers || []
+    );
+
+    await restoreCollection(
+      'suppliers',
+      parsed.suppliers || []
+    );
+
+    await restoreCollection(
+      'invoices',
+      parsed.invoices || []
+    );
+
+    await restoreCollection(
+      'purchases',
+      parsed.purchases || []
+    );
+
+    await restoreCollection(
+      'inventoryLogs',
+      parsed.inventoryLogs || []
+    );
+
+    await restoreCollection(
+      'payments',
+      parsed.payments || []
+    );
+
+    if (parsed.categories) {
+      await setDoc(
+        doc(db, 'categories', 'config'),
+        {
+          categories: parsed.categories
+        },
+        { merge: true }
+      );
     }
-  };
+
+    if (parsed.settings) {
+      await setDoc(
+        doc(db, 'settings', 'store'),
+        parsed.settings,
+        { merge: true }
+      );
+    }
+
+    if (parsed.counters) {
+      await setDoc(
+        doc(db, 'counters', 'invoices'),
+        {
+          taxInvoiceSeq:
+            Number(parsed.counters.taxInvoiceSeq) || 1001,
+
+          retailBillSeq:
+            Number(parsed.counters.retailBillSeq) || 1001
+        },
+        { merge: true }
+      );
+    }
+
+    if (parsed.products) {
+      setProducts(parsed.products);
+    }
+
+    if (parsed.customers) {
+      setCustomers(parsed.customers);
+    }
+
+    if (parsed.suppliers) {
+      setSuppliers(parsed.suppliers);
+    }
+
+    if (parsed.invoices) {
+      setInvoices(parsed.invoices);
+    }
+
+    if (parsed.purchases) {
+      setPurchases(parsed.purchases);
+    }
+
+    if (parsed.inventoryLogs) {
+      setInventoryLogs(parsed.inventoryLogs);
+    }
+
+    if (parsed.payments) {
+      setPayments(parsed.payments);
+    }
+
+    if (parsed.categories) {
+      setCategories(parsed.categories);
+    }
+
+    if (parsed.settings) {
+      setSettings(parsed.settings);
+    }
+
+    if (parsed.counters) {
+      setTaxInvoiceSeq(
+        Number(parsed.counters.taxInvoiceSeq) || 1001
+      );
+
+      setRetailBillSeq(
+        Number(parsed.counters.retailBillSeq) || 1001
+      );
+    }
+
+    alert(
+      'Backup restored successfully to Firebase!'
+    );
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error restoring backup to Firebase:',
+      error
+    );
+
+    alert(
+      `Backup restore failed.\n\n${
+        error.message ||
+        'Please choose a valid H BILLS backup file.'
+      }`
+    );
+
+    return false;
+  }
+};
 
   const resetToDemoData = () => {
     if (window.confirm('Reset all data to default demo records? Your current edits will be replaced.')) {
@@ -941,48 +2545,172 @@ const logout = async () => {
     }
   };
 
-  const clearAllData = (showPrompt = true) => {
-    if (!showPrompt || window.confirm('Are you sure you want to remove all sample stocks, customers, and invoices? Your app will start completely clean for your actual business data.')) {
-      setProducts([]);
-      setCustomers([]);
-      setSuppliers([]);
-      setInvoices([]);
-      setPurchases([]);
-      setInventoryLogs([]);
-      setPayments([]);
-      localStorage.removeItem('hb_products');
-      localStorage.removeItem('hb_customers');
-      localStorage.removeItem('hb_suppliers');
-      localStorage.removeItem('hb_invoices');
-      localStorage.removeItem('hb_purchases');
-      localStorage.removeItem('hb_inventory_logs');
-      localStorage.removeItem('hb_payments');
-      if (showPrompt) alert('All sample products, customers, and stock data have been cleared successfully!');
+  const clearAllData = async (showPrompt = true) => {
+  const confirmed =
+    !showPrompt ||
+    window.confirm(
+      'Are you sure you want to permanently remove all products, customers, suppliers, invoices, purchases, payments, and inventory logs from Firebase?\n\nThis cannot be undone.'
+    );
+
+  if (!confirmed) {
+    return false;
+  }
+
+  try {
+    const collectionsToClear = [
+      'products',
+      'customers',
+      'suppliers',
+      'invoices',
+      'purchases',
+      'inventoryLogs',
+      'payments'
+    ];
+
+    for (const collectionName of collectionsToClear) {
+      const snapshot = await getDocs(
+        collection(db, collectionName)
+      );
+
+      // Firestore write batches support up to 500 operations.
+      for (let i = 0; i < snapshot.docs.length; i += 500) {
+        const batch = writeBatch(db);
+
+        snapshot.docs
+          .slice(i, i + 500)
+          .forEach(docSnap => {
+            batch.delete(
+              doc(db, collectionName, docSnap.id)
+            );
+          });
+
+        await batch.commit();
+      }
+
+      console.log(
+        `Cleared Firestore collection: ${collectionName}`
+      );
     }
-  };
+
+    // Clear React state only after Firebase succeeds.
+    setProducts([]);
+    setCustomers([]);
+    setSuppliers([]);
+    setInvoices([]);
+    setPurchases([]);
+    setInventoryLogs([]);
+    setPayments([]);
+
+    // Temporary localStorage cleanup while we are still
+    // completing the Firebase migration.
+    localStorage.removeItem('hb_products');
+    localStorage.removeItem('hb_customers');
+    localStorage.removeItem('hb_suppliers');
+    localStorage.removeItem('hb_invoices');
+    localStorage.removeItem('hb_purchases');
+    localStorage.removeItem('hb_inventory_logs');
+    localStorage.removeItem('hb_payments');
+
+    console.log(
+      'All business data cleared from Firestore.'
+    );
+
+    if (showPrompt) {
+      alert(
+        'All business data has been cleared successfully from Firebase.'
+      );
+    }
+
+    return true;
+
+  } catch (error) {
+    console.error(
+      'Error clearing Firebase business data:',
+      error
+    );
+
+    alert(
+      `Failed to clear all data from Firebase.\n\n${
+        error.message || 'Unknown Firebase error.'
+      }`
+    );
+
+    return false;
+  }
+};
 
   return (
-    <AppContext.Provider value={{
-      categories, addCategory, deleteCategory,
-      products, setProducts, addProduct, updateProduct, deleteProduct, adjustStock,
-      customers, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment,
-      suppliers, addSupplier, updateSupplier, deleteSupplier, recordSupplierPayment, createPurchase, purchases,
-      invoices, createInvoice, deleteInvoice, getNextInvoiceNumber,
-      taxInvoiceSeq, setTaxInvoiceSeq, retailBillSeq, setRetailBillSeq,
-      inventoryLogs, deleteInventoryLog,
-      payments, deletePayment,
-      settings, updateSettings, toggleTheme,
-      user, login, logout, authLoading,
-      activeTab, setActiveTab,
+  <AppContext.Provider
+    value={{
+      categories,
+      addCategory,
+      deleteCategory,
+
+      products,
+      setProducts,
+      addProduct,
+      updateProduct,
+      deleteProduct,
+      adjustStock,
+
+      customers,
+      addCustomer,
+      updateCustomer,
+      deleteCustomer,
+      recordCustomerPayment,
+
+      suppliers,
+      addSupplier,
+      updateSupplier,
+      deleteSupplier,
+      recordSupplierPayment,
+      createPurchase,
+      purchases,
+
+      invoices,
+      createInvoice,
+      deleteInvoice,
+      getNextInvoiceNumber,
+
+      taxInvoiceSeq,
+      setTaxInvoiceSeq,
+      retailBillSeq,
+      setRetailBillSeq,
+      updateInvoiceCounters,
+
+      inventoryLogs,
+      deleteInventoryLog,
+
+      payments,
+      deletePayment,
+
+      settings,
+      updateSettings,
+      toggleTheme,
+
+      user,
+      login,
+      logout,
+      authLoading,
+
+      activeTab,
+      setActiveTab,
+
       cloudStatus,
-exportDataJSON, importDataJSON, resetToDemoData, clearAllData,
-migrateProductionDataToFirebase
-    }}>
-      {children}
-    </AppContext.Provider>
-  );
+
+      exportDataJSON,
+      importDataJSON,
+      resetToDemoData,
+      clearAllData,
+
+      migrateProductionDataToFirebase
+    }}
+  >
+    {children}
+  </AppContext.Provider>
+);
+
 };
 
 export const useApp = () => useContext(AppContext);
 
-  

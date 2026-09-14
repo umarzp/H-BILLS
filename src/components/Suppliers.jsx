@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Factory, 
-  Plus, 
-  Search, 
-  CreditCard, 
-  ShoppingBag, 
+import {
+  Factory,
+  Plus,
+  Search,
+  CreditCard,
+  ShoppingBag,
   X,
   CheckCircle,
   Truck,
@@ -14,14 +14,14 @@ import {
 } from 'lucide-react';
 
 export const Suppliers = () => {
-  const { 
-    suppliers, 
-    addSupplier, 
+  const {
+    suppliers,
+    addSupplier,
     updateSupplier,
     deleteSupplier,
-    recordSupplierPayment, 
-    products, 
-    createPurchase, 
+    recordSupplierPayment,
+    products,
+    createPurchase,
     purchases,
     user
   } = useApp();
@@ -54,7 +54,13 @@ export const Suppliers = () => {
   const [poSupplierId, setPoSupplierId] = useState('');
   const [poItems, setPoItems] = useState([]);
   const [poIsPaid, setPoIsPaid] = useState(true);
-
+  const [poInvoiceNo, setPoInvoiceNo] = useState('');
+  const [poInvoiceDate, setPoInvoiceDate] = useState(
+     new Date().toISOString().split('T')[0]
+    );
+  const [poAmountPaid, setPoAmountPaid] = useState(0);
+  const [poPaymentMode, setPoPaymentMode] = useState('Cash');
+  const [poNotes, setPoNotes] = useState('');
   const filteredSuppliers = suppliers.filter(s =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (s.company && s.company.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -100,17 +106,29 @@ export const Suppliers = () => {
     }
   };
 
-  const handleRecordPaySubmit = (e) => {
-    e.preventDefault();
-    if (!selectedSuppForPay || !payAmount) return;
+  const handleRecordPaySubmit = async (e) => {
+  e.preventDefault();
 
-    recordSupplierPayment(selectedSuppForPay.id, payAmount, payMode, payNote);
-    setShowPayModal(false);
-    setSelectedSuppForPay(null);
-    setPayAmount('');
-    setPayNote('');
-    alert('Supplier payment logged successfully!');
-  };
+  if (!selectedSuppForPay || !payAmount) return;
+
+  const success = await recordSupplierPayment(
+    selectedSuppForPay.id,
+    payAmount,
+    payMode,
+    payNote
+  );
+
+  if (!success) {
+    return;
+  }
+
+  setShowPayModal(false);
+  setSelectedSuppForPay(null);
+  setPayAmount('');
+  setPayNote('');
+
+  alert('Supplier payment logged successfully!');
+};
 
   const handleAddItemToPO = (prodId) => {
     const prod = products.find(p => p.id === prodId);
@@ -127,30 +145,101 @@ export const Suppliers = () => {
     });
   };
 
-  const handlePOSubmit = (e) => {
-    e.preventDefault();
-    if (!poSupplierId || poItems.length === 0) {
-      alert('Please select a supplier and add at least one item.');
-      return;
-    }
+  const handlePOSubmit = async (e) => {
+  e.preventDefault();
 
-    const supp = suppliers.find(s => s.id === poSupplierId);
-    const total = poItems.reduce((sum, item) => sum + (item.costPrice * item.qty), 0);
+  if (!poSupplierId || poItems.length === 0) {
+    alert('Please select a supplier and add at least one item.');
+    return;
+  }
 
-    createPurchase({
-      supplierId: poSupplierId,
-      supplierName: supp ? supp.name : 'Vendor',
-      items: poItems,
-      total,
-      isPaid: poIsPaid,
-      paymentMode: poIsPaid ? 'Bank' : 'Credit'
-    });
+  const supp = suppliers.find(
+    s => s.id === poSupplierId
+  );
 
-    setShowPOModal(false);
-    setPoItems([]);
-    setPoSupplierId('');
-    alert('Purchase entry saved and inventory updated!');
-  };
+  const total = poItems.reduce(
+    (sum, item) =>
+      sum +
+      ((Number(item.costPrice) || 0) *
+        (Number(item.qty) || 0)),
+    0
+  );
+
+  const amountPaid = Math.min(
+    Math.max(Number(poAmountPaid) || 0, 0),
+    total
+  );
+
+  const balanceDue = Math.max(
+    0,
+    total - amountPaid
+  );
+
+  const paymentStatus =
+    balanceDue <= 0
+      ? 'PAID'
+      : amountPaid > 0
+        ? 'PARTIAL'
+        : 'UNPAID';
+
+  const createdPurchase = await createPurchase({
+    supplierId: poSupplierId,
+
+    supplierName:
+      supp?.name || 'Vendor',
+
+    supplierCompany:
+      supp?.company || '',
+
+    supplierInvoiceNo:
+      poInvoiceNo.trim(),
+
+    supplierInvoiceDate:
+      poInvoiceDate,
+
+    items: poItems,
+
+    total,
+
+    amountPaid,
+
+    balanceDue,
+
+    paymentStatus,
+
+    paymentMode:
+      amountPaid > 0
+        ? poPaymentMode
+        : 'Credit',
+
+    notes:
+      poNotes.trim()
+  });
+
+  if (!createdPurchase) {
+    return;
+  }
+
+  setShowPOModal(false);
+
+  setPoItems([]);
+  setPoSupplierId('');
+  setPoInvoiceNo('');
+
+  setPoInvoiceDate(
+    new Date()
+      .toISOString()
+      .split('T')[0]
+  );
+
+  setPoAmountPaid(0);
+  setPoPaymentMode('Cash');
+  setPoNotes('');
+
+  alert(
+    'Purchase entry saved and inventory updated!'
+  );
+};
 
   return (
     <div>
@@ -402,6 +491,40 @@ export const Suppliers = () => {
                   ))}
                 </select>
               </div>
+              <div
+  style={{
+    display: 'grid',
+    gridTemplateColumns: '1fr 1fr',
+    gap: '0.75rem'
+  }}
+>
+  <div className="form-group">
+    <label className="form-label">
+      Supplier Invoice No.
+    </label>
+
+    <input
+      type="text"
+      value={poInvoiceNo}
+      onChange={(e) => setPoInvoiceNo(e.target.value)}
+      placeholder="e.g. INV-4587"
+      className="form-input"
+    />
+  </div>
+
+  <div className="form-group">
+    <label className="form-label">
+      Supplier Invoice Date
+    </label>
+
+    <input
+      type="date"
+      value={poInvoiceDate}
+      onChange={(e) => setPoInvoiceDate(e.target.value)}
+      className="form-input"
+    />
+  </div>
+</div>
 
               <div className="form-group">
                 <label className="form-label">Add Products to Purchase Order</label>
@@ -425,31 +548,146 @@ export const Suppliers = () => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', margin: '1rem 0' }}>
                 {poItems.map((item, idx) => (
                   <div key={item.productId} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', background: 'var(--bg-secondary)', padding: '0.5rem', borderRadius: 'var(--radius-md)' }}>
-                    <span style={{ fontSize: '0.85rem', fontWeight: 700, flex: 1 }}>{item.name}</span>
-                    <input
-                      type="number"
-                      placeholder="Qty"
-                      value={item.qty}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setPoItems(items => items.map((it, i) => i === idx ? { ...it, qty: val } : it));
-                      }}
-                      className="form-input"
-                      style={{ width: '70px', padding: '2px 4px' }}
-                    />
-                    <input
-                      type="number"
-                      placeholder="Cost ₹"
-                      value={item.costPrice}
-                      onChange={(e) => {
-                        const val = Number(e.target.value);
-                        setPoItems(items => items.map((it, i) => i === idx ? { ...it, costPrice: val } : it));
-                      }}
-                      className="form-input"
-                      style={{ width: '90px', padding: '2px 4px' }}
-                    />
+                    <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                           {item.name}
+                       </div>
+                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                       Product
+                     </div>
+                     </div>
+                    <div style={{ width: '90px' }}>
+  <div
+    style={{
+      fontSize: '0.7rem',
+      color: 'var(--text-muted)',
+      marginBottom: '4px'
+    }}
+  >
+    Quantity
+  </div>
+
+  <input
+    type="number"
+    value={item.qty}
+    onChange={(e) => {
+      const val = Number(e.target.value);
+      setPoItems(items =>
+        items.map((it, i) =>
+          i === idx ? { ...it, qty: val } : it
+        )
+      );
+    }}
+    className="form-input"
+    style={{ width: '100%', padding: '2px 4px' }}
+  />
+</div>
+                    <div style={{ width: '120px' }}>
+  <div
+    style={{
+      fontSize: '0.7rem',
+      color: 'var(--text-muted)',
+      marginBottom: '4px'
+    }}
+  >
+    Purchase Price / Unit
+  </div>
+
+  <input
+    type="number"
+    value={item.costPrice}
+    onChange={(e) => {
+      const val = Number(e.target.value);
+      setPoItems(items =>
+        items.map((it, i) =>
+          i === idx ? { ...it, costPrice: val } : it
+        )
+      );
+    }}
+    className="form-input"
+    style={{ width: '100%', padding: '2px 4px' }}
+  />
+</div>
+                    <div
+  style={{
+    minWidth: '90px',
+    textAlign: 'right'
+  }}
+>
+  <div
+    style={{
+      fontSize: '0.7rem',
+      color: 'var(--text-muted)'
+    }}
+  >
+    Line Total
+  </div>
+
+  <div
+    style={{
+      fontSize: '0.85rem',
+      fontWeight: 700,
+      marginTop: '4px'
+    }}
+  >
+    ₹
+    {(
+      (Number(item.qty) || 0) *
+      (Number(item.costPrice) || 0)
+    ).toLocaleString('en-IN')}
+  </div>
+</div>
                   </div>
                 ))}
+              </div>
+                            <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '0.75rem',
+                  marginTop: '1rem'
+                }}
+              >
+                <div className="form-group">
+                  <label className="form-label">Amount Paid</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={poAmountPaid}
+                    onChange={(e) =>
+                      setPoAmountPaid(Number(e.target.value))
+                    }
+                    className="form-input"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Payment Mode</label>
+                  <select
+                    value={poPaymentMode}
+                    onChange={(e) =>
+                      setPoPaymentMode(e.target.value)
+                    }
+                    className="form-select"
+                  >
+                    <option value="Cash">Cash</option>
+                    <option value="Bank">Bank</option>
+                    <option value="UPI">UPI</option>
+                    <option value="Credit">Credit</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Notes / Reference</label>
+                <textarea
+                  value={poNotes}
+                  onChange={(e) => setPoNotes(e.target.value)}
+                  className="form-input"
+                  rows="3"
+                  placeholder="Optional purchase notes"
+                />
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>

@@ -1,30 +1,29 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  Settings, 
-  Download, 
-  Upload, 
-  RotateCcw, 
-  Building2, 
-  ShieldCheck, 
-  UserCheck, 
-  Save, 
+import {
+  Settings,
+  Download,
+  Upload,
+  RotateCcw,
+  Building2,
+  ShieldCheck,
+  UserCheck,
+  Save,
   QrCode,
   FileText,
   Trash2
 } from 'lucide-react';
 
 export const SettingsBackup = () => {
-  const { 
-  settings, 
-  updateSettings, 
-  user, 
-  exportDataJSON, 
+  const {
+  settings,
+  updateSettings,
+  user,
+  exportDataJSON,
   importDataJSON,
   taxInvoiceSeq,
-  setTaxInvoiceSeq,
   retailBillSeq,
-  setRetailBillSeq,
+  updateInvoiceCounters,
   migrateProductionDataToFirebase
 } = useApp();
 
@@ -43,25 +42,58 @@ export const SettingsBackup = () => {
 
   const [customTaxSeq, setCustomTaxSeq] = useState(taxInvoiceSeq || 1001);
   const [customRetailSeq, setCustomRetailSeq] = useState(retailBillSeq || 1001);
+  useEffect(() => {
+  setCustomTaxSeq(taxInvoiceSeq || 1001);
+}, [taxInvoiceSeq]);
 
-  const handleSaveProfile = (e) => {
-    e.preventDefault();
-    updateSettings(form);
-    setTaxInvoiceSeq(Number(customTaxSeq) || 1001);
-    setRetailBillSeq(Number(customRetailSeq) || 1001);
-    alert('Business Profile, Prefixes & Sequence counters updated successfully!');
-  };
+useEffect(() => {
+  setCustomRetailSeq(retailBillSeq || 1001);
+}, [retailBillSeq]);
+
+  const handleSaveProfile = async (e) => {
+  e.preventDefault();
+
+  const settingsSaved = await updateSettings(form);
+
+  if (!settingsSaved) {
+    return;
+  }
+
+  const countersSaved = await updateInvoiceCounters(
+    Number(customTaxSeq) || 1001,
+    Number(customRetailSeq) || 1001
+  );
+
+  if (!countersSaved) {
+    return;
+  }
+
+  alert(
+    'Business Profile, Prefixes & Sequence counters updated successfully!'
+  );
+};
 
   const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      importDataJSON(event.target.result);
-    };
-    reader.readAsText(file);
+  const reader = new FileReader();
+
+  reader.onload = async (event) => {
+    const success = await importDataJSON(
+      event.target.result
+    );
+
+    if (!success) {
+      return;
+    }
+
+    // Allow selecting the same backup file again later if needed.
+    e.target.value = '';
   };
+
+  reader.readAsText(file);
+};
 
   return (
     <div>
@@ -273,26 +305,7 @@ export const SettingsBackup = () => {
                 <Download size={18} />
                 <span>Export Full Backup (JSON)</span>
               </button>
-               {user?.role === 'admin' && (
-                 <button
-                   onClick={() => {
-                     const confirmed = window.confirm(
-                       'IMPORTANT: Run this only on the production H BILLS website after downloading a backup.\n\n' +
-                       'This will copy production localStorage business data into Firebase Firestore.\n\n' +
-                       'Continue with Firebase migration?'
-                     );
 
-                     if (confirmed) {
-                       migrateProductionDataToFirebase();
-                     }
-                   }}
-                   className="btn btn-primary"
-                   style={{ width: '100%' }}
-                  >
-                   <Upload size={18} />
-                   <span>Migrate Production Data to Firebase</span>
-                   </button>
-                 )}
               {/* Import JSON File Input */}
               <label className="btn btn-secondary" style={{ width: '100%', cursor: 'pointer', textAlign: 'center' }}>
                 <Upload size={18} />

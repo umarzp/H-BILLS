@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { formatDate } from '../utils/formatDate';
 import { 
   Users, 
   UserPlus, 
@@ -86,17 +87,29 @@ export const Customers = () => {
     }
   };
 
-  const handleRecordPaySubmit = (e) => {
-    e.preventDefault();
-    if (!selectedCustForPay || !payAmount) return;
+  const handleRecordPaySubmit = async (e) => {
+  e.preventDefault();
 
-    recordCustomerPayment(selectedCustForPay.id, payAmount, payMode, payNote);
-    setShowPayModal(false);
-    setSelectedCustForPay(null);
-    setPayAmount('');
-    setPayNote('');
-    alert('Payment recorded and customer ledger updated!');
-  };
+  if (!selectedCustForPay || !payAmount) return;
+
+  const success = await recordCustomerPayment(
+    selectedCustForPay.id,
+    payAmount,
+    payMode,
+    payNote
+  );
+
+  if (!success) {
+    return;
+  }
+
+  setShowPayModal(false);
+  setSelectedCustForPay(null);
+  setPayAmount('');
+  setPayNote('');
+
+  alert('Payment recorded and customer ledger updated!');
+};
 
   return (
     <div>
@@ -423,7 +436,7 @@ export const Customers = () => {
                     .map(inv => (
                       <tr key={inv.id}>
                         <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent-primary)' }}>{inv.invoiceNumber}</td>
-                        <td>{inv.date}</td>
+                        <td>{formatDate(inv.date)}</td>
                         <td style={{ fontWeight: 800 }}>₹{inv.total.toLocaleString('en-IN')}</td>
                         <td><span className="badge badge-blue">{inv.paymentMode}</span></td>
                         <td>
