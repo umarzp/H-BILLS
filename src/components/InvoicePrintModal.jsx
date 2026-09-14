@@ -4,6 +4,7 @@ import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import { Printer, Download, X, CheckCircle, Smartphone } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { formatDate } from '../utils/formatDate';
 
 export const InvoicePrintModal = ({ invoice, onClose }) => {
   const { settings } = useApp();
@@ -51,8 +52,11 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
   const sgst = taxTotal / 2;
 
   return (
-    <div className="modal-overlay">
-      <div className="modal-content" style={{ maxWidth: printFormat === 'thermal' ? '450px' : '820px' }}>
+   <div className="modal-overlay invoice-print-overlay">
+  <div
+    className="modal-content invoice-print-modal"
+    style={{ maxWidth: printFormat === 'thermal' ? '450px' : '820px' }}
+  >
         {/* Action Header - Excluded from Print */}
         <div className="modal-header no-print">
           <div>
@@ -99,8 +103,9 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
         </div>
 
         {/* Printable Invoice Container */}
-        <div 
-          ref={invoiceRef}
+        <div
+  ref={invoiceRef}
+  className="invoice-print-area"
           style={{
             background: '#ffffff',
             color: '#1e293b',

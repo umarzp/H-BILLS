@@ -544,31 +544,82 @@ body {
   padding: 1rem;
 }
 
-/* Thermal & A4 Invoice Print Media Query */
+/* Invoice Print */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
 @media print {
+  html,
   body {
     background: #ffffff !important;
-    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
   }
-  .navbar, .sidebar, .mobile-nav, .no-print {
+
+  /* Hide normal application UI */
+  .navbar,
+  .sidebar,
+  .mobile-nav,
+  .no-print {
     display: none !important;
   }
+
+  /* Hide POS content while invoice is being printed */
+  .pos-container > *:not(.invoice-print-overlay) {
+    display: none !important;
+  }
+
   .content-area {
+    margin: 0 !important;
     padding: 0 !important;
-    max-width: 100% !important;
+    width: 100% !important;
+    max-width: none !important;
   }
-  .print-only {
+
+  .pos-container {
     display: block !important;
-  }
-  .modal-overlay {
-    position: static !important;
-    background: none !important;
+    width: 100% !important;
+    margin: 0 !important;
     padding: 0 !important;
   }
-  .modal-content {
+
+  .invoice-print-overlay {
+    position: static !important;
+    inset: auto !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  .invoice-print-modal {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
     border: none !important;
     box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  .invoice-print-area {
+    width: 100% !important;
     max-width: 100% !important;
-    padding: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
