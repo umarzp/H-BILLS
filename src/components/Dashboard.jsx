@@ -180,8 +180,8 @@ export const Dashboard = () => {
             onClick={() => setActiveTab('billing')}
             className="btn btn-primary"
           >
-            <Receipt size={18} />
-            <span>Create Invoice</span>
+            <IndianRupee size={18} />
+<span>Create Invoice</span>
           </button>
           <button 
             onClick={() => setActiveTab('products')}
