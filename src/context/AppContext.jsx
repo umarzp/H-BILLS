@@ -654,9 +654,6 @@ const deleteCategory = async (catName) => {
       doc(db, 'products', newProd.id),
       newProd
     );
-
-    setProducts(prev => [newProd, ...prev]);
-
     console.log(
       'Product saved to Firestore:',
       newProd.id
@@ -1409,8 +1406,6 @@ const addSupplier = async (suppData) => {
       doc(db, 'suppliers', newSupp.id),
       newSupp
     );
-
-    setSuppliers(prev => [newSupp, ...prev]);
 
     console.log(
       'Supplier saved to Firestore:',
