@@ -7,8 +7,9 @@ import {
   ShoppingBag, 
   Users, 
   Factory, 
-  CreditCard, 
-  BarChart3, 
+  CreditCard,
+  History,
+  BarChart3,
   Settings,
   AlertTriangle
 } from 'lucide-react';
@@ -26,6 +27,7 @@ export const Sidebar = () => {
     { id: 'customers', label: '👥 Customers', icon: Users, role: 'all' },
     { id: 'suppliers', label: '🏭 Suppliers', icon: Factory, role: 'all' },
     { id: 'payments', label: '💰 Payments Ledger', icon: CreditCard, role: 'all' },
+    { id: 'sales-history', label: '🧾 Sales History', icon: History, role: 'all' },
     { id: 'reports', label: '📊 Analytics & Reports', icon: BarChart3, role: 'admin' },
     { id: 'settings', label: '⚙️ Settings & Backup', icon: Settings, role: 'all' },
   ];

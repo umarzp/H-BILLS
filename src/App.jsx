@@ -17,6 +17,7 @@ import { Products } from './components/Products';
 import { Customers } from './components/Customers';
 import { Suppliers } from './components/Suppliers';
 import { Payments } from './components/Payments';
+import { SalesHistory } from './components/SalesHistory';
 import { Reports } from './components/Reports';
 import { SettingsBackup } from './components/SettingsBackup';
 
@@ -60,6 +61,8 @@ const AppContent = () => {
         return <Suppliers />;
       case 'payments':
         return <Payments />;
+      case 'sales-history':
+        return <SalesHistory />;  
       case 'reports':
         return <Reports />;
       case 'settings':
