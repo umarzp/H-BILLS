@@ -646,7 +646,9 @@ const deleteCategory = async (catName) => {
     price: Number(prod.price) || 0,
     costPrice: Number(prod.costPrice) || 0,
     minStock: Number(prod.minStock) || 5,
-    gstRate: Number(prod.gstRate) || 18,
+    gstRate: prod.gstRate === '' || prod.gstRate == null
+  ? 18
+  : Number(prod.gstRate),
   };
 
   try {
