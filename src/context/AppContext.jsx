@@ -2098,7 +2098,7 @@ console.log(
       throw new Error('Enter a valid positive amount with up to 2 decimals.');
     }
 
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) ||
         Number.isNaN(Date.parse(date))) {
       throw new Error('Enter a valid expense date.');
     }
