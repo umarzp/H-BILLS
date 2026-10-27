@@ -22,6 +22,7 @@ const categories = [
 const initialForm = {
   date: new Date().toLocaleDateString('en-CA'),
   category: 'Shop Rent',
+  customCategory: '',
   amount: '',
   paymentMode: 'Cash',
   paidTo: '',
@@ -50,7 +51,18 @@ export const Expenses = () => {
     if (saving) return;
     setSaving(true);
     try {
-      await addExpense(form);
+      const expenseCategory = form.category === '__custom__'
+        ? String(form.customCategory || '').trim()
+        : form.category;
+
+      if (!expenseCategory) {
+        throw new Error('Enter a custom expense category.');
+      }
+
+      await addExpense({
+        ...form,
+        category: expenseCategory
+      });
       setShowForm(false);
       setForm({
         ...initialForm,
@@ -153,7 +165,12 @@ export const Expenses = () => {
             onChange={e => setCategoryFilter(e.target.value)}
           >
             <option value="All">All Categories</option>
-            {categories.map(c => <option key={c}>{c}</option>)}
+            {[...new Set([
+              ...categories,
+              ...expenses.map(item => item.category).filter(Boolean)
+            ])].map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
           </select>
         </div>
 
@@ -223,9 +240,23 @@ export const Expenses = () => {
                 Category
                 <select value={form.category}
                   onChange={e => update('category', e.target.value)}>
-                  {categories.map(c => <option key={c}>{c}</option>)}
+                  {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  <option value="__custom__">+ Custom Expense Category</option>
                 </select>
               </label>
+
+              {form.category === '__custom__' && (
+                <label>
+                  Custom Category Name
+                  <input
+                    placeholder="e.g. Water Purchase"
+                    value={form.customCategory}
+                    onChange={e => update('customCategory', e.target.value)}
+                    required
+                  />
+                </label>
+              )}
+
               <label>
                 Amount (₹)
                 <input type="number" min="0.01" step="0.01"
