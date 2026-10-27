@@ -11,7 +11,7 @@ const accounts = [
 ];
 
 export const OpeningBalances = () => {
-  const { user, settings = {}, updateSettings } = useApp();
+  const { user, settings = {}, saveOpeningBalances } = useApp();
 
   const [balances, setBalances] = useState({
     Cash: '',
@@ -44,7 +44,7 @@ export const OpeningBalances = () => {
   ]);
 
   const handleSave = async () => {
-    if (saving || user?.role !== 'admin') return;
+    if (saving || isConfigured || savedConfig != null || user?.role !== 'admin') return;
 
     const parsed = {};
 
@@ -66,14 +66,7 @@ export const OpeningBalances = () => {
     setSaving(true);
 
     try {
-      const success = await updateSettings({
-        financialOpeningBalances: {
-          effectiveDate: OPENING_DATE,
-          balances: parsed,
-          configuredBy: user?.name || 'Admin',
-          configuredAt: new Date().toISOString()
-        }
-      });
+      const success = await saveOpeningBalances(parsed);
 
       if (success) {
         alert('Opening balances saved successfully.');
@@ -166,9 +159,9 @@ export const OpeningBalances = () => {
             value={isAdmin ? balances[id] : (
               isConfigured ? String(savedConfig.balances[id]) : ''
             )}
-            readOnly={!isAdmin}
+            readOnly={!isAdmin || isConfigured || savedConfig != null || saving}
             onChange={event => {
-              if (isAdmin) update(id, event.target.value);
+              if (isAdmin && !isConfigured && savedConfig == null && !saving) update(id, event.target.value);
             }}
             style={{
               width: 160,
@@ -199,13 +192,13 @@ export const OpeningBalances = () => {
       <div style={{ marginTop: 18 }}>
         {isAdmin && <button
           type="button"
-          disabled
+          disabled={saving || isConfigured || savedConfig != null}
           onClick={handleSave}
           style={{
             padding: '12px 20px',
             borderRadius: 8,
-            opacity: 0.55,
-            cursor: 'not-allowed'
+            opacity: saving || isConfigured || savedConfig != null ? 0.55 : 1,
+            cursor: saving || isConfigured || savedConfig != null ? 'not-allowed' : 'pointer'
           }}
         >
           {saving ? 'Saving...' : 'Save Opening Balances'}
@@ -215,10 +208,9 @@ export const OpeningBalances = () => {
           color: 'var(--text-secondary)',
           marginTop: 12
         }}>
-          Saving is locked until final Firebase security testing.
-          {isConfigured
-            ? ' Existing opening balances were detected.'
-            : ' No saved opening balances detected.'}
+          {savedConfig != null
+            ? 'Opening balances are saved and locked against accidental changes.'
+            : 'Admin can configure opening balances once. Please verify all three amounts before saving.'}
         </p>
       </div>
     </div>
