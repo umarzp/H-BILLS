@@ -1,18 +1,20 @@
 import React from 'react';
 import { useApp } from '../context/AppContext';
-import { 
-  LayoutDashboard, 
-  Receipt, 
-  Package, 
-  ShoppingBag, 
-  Users, 
-  Factory, 
+import {
+  LayoutDashboard,
+  Receipt,
+  Package,
+  ShoppingBag,
+  Users,
+  Factory,
   CreditCard,
   History,
   BarChart3,
+  BookOpen,
   Settings,
   AlertTriangle
 } from 'lucide-react';
+
 
 export const Sidebar = () => {
   const { activeTab, setActiveTab, products, user } = useApp();
