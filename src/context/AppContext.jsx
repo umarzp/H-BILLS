@@ -2635,6 +2635,78 @@ const createPurchase = async (purchaseData) => {
     }));
   };
 
+
+  // Save opening balances only once.
+  // Existing balances cannot be overwritten by this function.
+  const saveOpeningBalances = async (balances) => {
+    if (user?.role !== 'admin') {
+      alert('Only Admin can save opening balances.');
+      return false;
+    }
+
+    const accounts = ['Cash', 'UPI', 'Bank'];
+    const validatedBalances = {};
+
+    for (const account of accounts) {
+      const value = balances?.[account];
+
+      if (
+        value === '' ||
+        value === null ||
+        value === undefined ||
+        !Number.isFinite(Number(value)) ||
+        Number(value) < 0
+      ) {
+        alert(`Enter a valid opening balance for ${account}.`);
+        return false;
+      }
+
+      validatedBalances[account] = Number(value);
+    }
+
+    try {
+      const settingsRef = doc(db, 'settings', 'store');
+
+      await runTransaction(db, async (transaction) => {
+        const snapshot = await transaction.get(settingsRef);
+
+        if (
+          snapshot.exists() &&
+          snapshot.data().financialOpeningBalances != null
+        ) {
+          throw new Error('OPENING_BALANCES_ALREADY_EXIST');
+        }
+
+        transaction.set(
+          settingsRef,
+          {
+            financialOpeningBalances: {
+              effectiveDate: '2026-10-26',
+              balances: validatedBalances,
+              configuredBy: user?.name || 'Admin',
+              configuredAt: new Date().toISOString()
+            }
+          },
+          { merge: true }
+        );
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Opening balance save failed:', error);
+
+      if (error.message === 'OPENING_BALANCES_ALREADY_EXIST') {
+        alert(
+          'Opening balances already exist. Saving was cancelled to prevent overwriting.'
+        );
+      } else {
+        alert('Failed to save opening balances to Firebase.');
+      }
+
+      return false;
+    }
+  };
+
   const updateSettings = async (newSet) => {
   try {
     const updatedSettings = {
@@ -3327,6 +3399,7 @@ const updateInvoiceCounters = async (
 
       settings,
       updateSettings,
+      saveOpeningBalances,
       toggleTheme,
 
       user,
