@@ -25,7 +25,81 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
   if (!invoice) return null;
 
   const handleWindowPrint = () => {
-    window.print();
+    const element = invoiceRef.current;
+    if (!element) return;
+
+    const existingFrame = document.getElementById('hb-invoice-print-frame');
+    if (existingFrame) existingFrame.remove();
+
+    const frame = document.createElement('iframe');
+    frame.id = 'hb-invoice-print-frame';
+    frame.style.position = 'fixed';
+    frame.style.width = '0';
+    frame.style.height = '0';
+    frame.style.border = '0';
+    frame.style.visibility = 'hidden';
+
+    document.body.appendChild(frame);
+
+    const styles = Array.from(
+      document.querySelectorAll('link[rel="stylesheet"], style')
+    ).map(node => node.outerHTML).join('\n');
+
+    const thermal = printFormat === 'thermal';
+    const doc = frame.contentDocument;
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8" />
+        <title>Invoice</title>
+        ${styles}
+        <style>
+          @page {
+            size: ${thermal ? '80mm' : 'A4 portrait'};
+            margin: ${thermal ? '2mm' : '8mm'};
+          }
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+          }
+          .invoice-print-area {
+            width: 100% !important;
+            max-width: none !important;
+            box-sizing: border-box !important;
+            margin: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+          }
+          @media print {
+            tr { break-inside: avoid; }
+          }
+        </style>
+      </head>
+      <body>
+        ${element.outerHTML}
+      </body>
+      </html>
+    `);
+    doc.close();
+
+    let printed = false;
+
+    const printInvoice = () => {
+      if (printed) return;
+      printed = true;
+
+      frame.contentWindow.focus();
+      frame.contentWindow.print();
+    };
+
+    frame.onload = printInvoice;
+
+    // Fallback for browsers that don't fire iframe.onload after document.write.
+    setTimeout(printInvoice, 500);
   };
 
   const handleDownloadPDF = async () => {
@@ -45,6 +119,7 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
     }
   };
 
+
   // Calculate GST Split
   const isGstBill = invoice.gstType === 'GST';
   const taxTotal = invoice.taxTotal || 0;
@@ -52,7 +127,9 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
   const sgst = taxTotal / 2;
 
   return (
-   <div className="modal-overlay invoice-print-overlay">
+   <>
+
+    <div className="modal-overlay invoice-print-overlay">
   <div
     className="modal-content invoice-print-modal"
     style={{ maxWidth: printFormat === 'thermal' ? '450px' : '820px' }}
@@ -186,11 +263,26 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
                   <td style={{ padding: '6px' }}>{idx + 1}</td>
                   <td style={{ padding: '6px', fontWeight: 600 }}>
                     {item.name}
+                     {item.itemType === 'SERVICE' && (
+                       <span style={{ fontSize: '10px', color: '#0369a1', display: 'block' }}>
+                         Service / Labour
+                       </span>
+                     )}
+                     {item.itemType === 'SERVICE' && item.deviceModel && (
+                       <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>
+                         Device: {item.deviceModel}
+                       </span>
+                     )}
+                     {item.itemType === 'SERVICE' && item.serviceCode && (
+                       <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>
+                         Service Code: {item.serviceCode}
+                       </span>
+                     )}
                     {item.sku && <span style={{ fontSize: '10px', color: '#64748b', display: 'block' }}>SKU: {item.sku}</span>}
                   </td>
                   <td style={{ padding: '6px', textAlign: 'right' }}>{item.qty}</td>
                   <td style={{ padding: '6px', textAlign: 'right' }}>₹{item.price}</td>
-                  {isGstBill && <td style={{ padding: '6px', textAlign: 'right' }}>{item.gstRate || 18}%</td>}
+                  {isGstBill && <td style={{ padding: '6px', textAlign: 'right' }}>{item.gstRate ?? 18}%</td>}
                   <td style={{ padding: '6px', textAlign: 'right', fontWeight: 700 }}>₹{item.total.toLocaleString('en-IN')}</td>
                 </tr>
               ))}
@@ -267,5 +359,6 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
         </div>
       </div>
     </div>
+   </>
   );
 };

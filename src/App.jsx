@@ -18,6 +18,9 @@ import { Customers } from './components/Customers';
 import { Suppliers } from './components/Suppliers';
 import { Payments } from './components/Payments';
 import { SalesHistory } from './components/SalesHistory';
+import { CashBook } from './components/CashBook';
+import { FinancialManagement } from './components/FinancialManagement';
+import { Expenses } from './components/Expenses';
 import { Reports } from './components/Reports';
 import { SettingsBackup } from './components/SettingsBackup';
 
@@ -61,6 +64,14 @@ const AppContent = () => {
         return <Suppliers />;
       case 'payments':
         return <Payments />;
+      case 'financial-management':
+        return user.role === 'admin'
+          ? <FinancialManagement />
+          : <Dashboard />;
+      case 'cash-book':
+        return <CashBook />;
+       case 'expenses':
+        return <Expenses />;
       case 'sales-history':
         return <SalesHistory />;  
       case 'reports':

@@ -1,15 +1,15 @@
 import React, { useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatDate } from '../utils/formatDate';
-import { 
-  TrendingUp, 
-  ShoppingBag, 
+import {
+  TrendingUp,
+  ShoppingBag,
   IndianRupee,
-  AlertTriangle, 
-  PlusCircle, 
-  Receipt, 
-  PackagePlus, 
-  ArrowUpRight, 
+  AlertTriangle,
+  PlusCircle,
+  Receipt,
+  PackagePlus,
+  ArrowUpRight,
   ArrowDownRight,
   User,
   Clock,
@@ -17,11 +17,13 @@ import {
 } from 'lucide-react';
 
 export const Dashboard = () => {
-  const { 
-    invoices, 
-    products, 
-    purchases, 
-    setActiveTab, 
+  const {
+    invoices,
+    products,
+    purchases,
+    payments,
+    expenses,
+    setActiveTab,
     settings,
     user,
     deleteInvoice
@@ -31,7 +33,7 @@ export const Dashboard = () => {
 
   // Calculations
   const todayStr = new Date().toISOString().slice(0, 10);
-  
+
   const todayInvoices = invoices.filter(i => i.date === todayStr);
   const todaySales = todayInvoices.reduce((sum, i) => sum + i.total, 0);
 
@@ -40,16 +42,136 @@ export const Dashboard = () => {
 
   // Profit calculation (Revenue - Cost of items sold)
   let totalRevenue = 0;
+  // Historical invoice costs only; never invent product costs.
   let totalCostOfGoods = 0;
-  invoices.forEach(inv => {
-    totalRevenue += inv.total;
-    inv.items.forEach(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const cPrice = prod ? prod.costPrice : (item.price * 0.7);
-      totalCostOfGoods += cPrice * item.qty;
+  let missingCostLines = 0;
+
+  const profitInvoices = invoices;
+
+  profitInvoices
+    .filter(inv => !["CANCELLED", "VOID"].includes(
+      String(inv.status || "").toUpperCase()
+    ))
+    .forEach(inv => {
+      (inv.items || []).forEach(item => {
+        if (item.itemType === "SERVICE") {
+          missingCostLines++;
+          return;
+        }
+
+        const cost = item.costPrice === null ||
+          item.costPrice === undefined ||
+          item.costPrice === ""
+          ? null
+          : Number(item.costPrice);
+
+        const qty = Number(item.qty);
+
+        if (
+          cost === null ||
+          !Number.isFinite(cost) ||
+          cost < 0 ||
+          !Number.isFinite(qty) ||
+          qty <= 0
+        ) {
+          missingCostLines++;
+          return;
+        }
+
+        totalCostOfGoods += cost * qty;
+      });
     });
+
+  const profitIsProvisional = missingCostLines > 0;
+  const netProfit = profitInvoices.reduce(
+    (sum, inv) => {
+      if (["CANCELLED", "VOID"].includes(
+        String(inv.status || "").toUpperCase()
+      )) return sum;
+
+      return sum +
+        Number(inv.total || 0) -
+        Number(inv.taxTotal || 0);
+    },
+    0
+  ) - totalCostOfGoods;
+
+  // Admin dashboard inventory summary (read-only).
+  const inventorySummary = products.reduce((summary, product) => {
+    const stock = Number(product.stock);
+    const cost = Number(product.costPrice);
+
+    if (!Number.isFinite(stock) || stock < 0) {
+      summary.invalidRecords += 1;
+      return summary;
+    }
+
+    summary.quantity += stock;
+
+    const sellingPrice = Number(product.price);
+    if (
+      product.price !== null &&
+      product.price !== undefined &&
+      product.price !== '' &&
+      Number.isFinite(sellingPrice) &&
+      sellingPrice >= 0
+    ) {
+      summary.sellingValue += stock * sellingPrice;
+    } else {
+      summary.missingPrices += 1;
+    }
+
+    if (
+      product.costPrice === null ||
+      product.costPrice === undefined ||
+      product.costPrice === '' ||
+      !Number.isFinite(cost) ||
+      cost < 0
+    ) {
+      summary.missingCosts += 1;
+    } else {
+      summary.cost += stock * cost;
+    }
+
+    return summary;
+  }, {
+    quantity: 0,
+    cost: 0,
+    sellingValue: 0,
+    missingPrices: 0,
+    missingCosts: 0,
+    invalidRecords: 0
   });
-  const netProfit = Math.max(0, totalRevenue - totalCostOfGoods);
+
+  // Daily financial summary from existing Firebase records.
+  const todayMoneyReceived = payments
+    .filter(payment =>
+      payment.date === todayStr &&
+      payment.type === 'IN' &&
+      !['REVERSED', 'VOID', 'CANCELLED'].includes(
+        String(payment.status || '').toUpperCase()
+      )
+    )
+    .reduce((total, payment) => {
+      const amount = Number(payment.amount);
+      return total + (
+        Number.isFinite(amount) && amount > 0 ? amount : 0
+      );
+    }, 0);
+
+  const todayExpenses = expenses
+    .filter(expense =>
+      expense.date === todayStr &&
+      !['REVERSED', 'VOID', 'CANCELLED'].includes(
+        String(expense.status || '').toUpperCase()
+      )
+    )
+    .reduce((total, expense) => {
+      const amount = Number(expense.amount);
+      return total + (
+        Number.isFinite(amount) && amount > 0 ? amount : 0
+      );
+    }, 0);
 
   const lowStockItems = products.filter(p => p.stock <= (p.minStock || 5));
 
@@ -71,7 +193,7 @@ export const Dashboard = () => {
       const daySales = invoices
         .filter(inv => inv.date === dStr)
         .reduce((sum, inv) => sum + inv.total, 0);
-      salesData.push(daySales || Math.floor(Math.random() * 8000 + 4000)); // Fallback mock for visual aesthetics if sparse
+      salesData.push(daySales); // Fallback mock for visual aesthetics if sparse
     }
 
     ctx.clearRect(0, 0, width, height);
@@ -176,21 +298,21 @@ export const Dashboard = () => {
 
         {/* Quick Action Shortcuts */}
         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
-          <button 
+          <button
             onClick={() => setActiveTab('billing')}
             className="btn btn-primary"
           >
             <IndianRupee size={18} />
 <span>Create Invoice</span>
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('products')}
             className="btn btn-secondary"
           >
             <PlusCircle size={18} />
             <span>Add Product</span>
           </button>
-          <button 
+          <button
             onClick={() => setActiveTab('inventory')}
             className="btn btn-secondary"
           >
@@ -239,7 +361,7 @@ export const Dashboard = () => {
         {user.role === 'admin' && (
           <div className="card card-hover">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-              <span className="form-label" style={{ margin: 0 }}>Estimated Net Profit</span>
+              <span className="form-label" style={{ margin: 0 }}>Provisional Gross Profit / Loss</span>
               <div style={{ background: 'var(--success-bg)', color: 'var(--success)', padding: '8px', borderRadius: 'var(--radius-md)' }}>
                <IndianRupee size={20} />
               </div>
@@ -248,7 +370,174 @@ export const Dashboard = () => {
               ₹{netProfit.toLocaleString('en-IN')}
             </h2>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '0.5rem', fontSize: '0.775rem', color: 'var(--text-secondary)' }}>
-              <span>Margin based on selling vs cost price</span>
+              <span>Excludes GST and operating expenses; missing costs may apply</span>
+            </div>
+          </div>
+        )}
+
+        {/* Admin-only Inventory Summary */}
+        {user.role === 'admin' && (
+          <div className="card card-hover" style={{
+            borderLeft: '4px solid #10B981'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.75rem'
+            }}>
+              <span className="form-label" style={{ margin: 0 }}>
+                Total Inventory Value
+              </span>
+              <PackagePlus size={20} color="#10B981" />
+            </div>
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem'
+            }}>
+              <div>
+                <div style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.75rem'
+                }}>
+                  Stock Quantity
+                </div>
+                <h2 style={{
+                  fontSize: '1.5rem',
+                  fontWeight: 800,
+                  color: '#60A5FA'
+                }}>
+                  {inventorySummary.quantity.toLocaleString('en-IN')}
+                </h2>
+              </div>
+
+              <div>
+                <div style={{
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.75rem'
+                }}>
+                  Total Purchase Cost
+                </div>
+                <h2 style={{
+                  fontSize: '1.5rem',
+                  fontWeight: 800,
+                  color: '#34D399'
+                }}>
+                  ₹{inventorySummary.cost.toLocaleString('en-IN', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                </h2>
+              </div>
+            </div>
+
+            <div style={{
+              borderTop: '1px solid var(--border-color)',
+              paddingTop: '0.75rem',
+              marginTop: '0.75rem'
+            }}>
+              <div style={{
+                color: 'var(--text-secondary)',
+                fontSize: '0.75rem'
+              }}>
+                Total Selling Value
+              </div>
+              <h2 style={{
+                fontSize: '1.5rem',
+                fontWeight: 800,
+                color: '#FBBF24'
+              }}>
+                ₹{inventorySummary.sellingValue.toLocaleString('en-IN', {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2
+                })}
+              </h2>
+            </div>
+
+            {(inventorySummary.missingCosts > 0 ||
+              inventorySummary.missingPrices > 0 ||
+              inventorySummary.invalidRecords > 0) && (
+              <div style={{
+                color: 'var(--warning)',
+                fontSize: '0.75rem',
+                marginTop: '0.75rem'
+              }}>
+                Valuation incomplete: missing costs or invalid stock records.
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Today's Money Received - Admin only */}
+        {user.role === 'admin' && (
+          <div className="card card-hover" style={{
+            borderLeft: '4px solid #06B6D4'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.75rem'
+            }}>
+              <span className="form-label" style={{ margin: 0 }}>
+                Today's Money Received
+              </span>
+              <IndianRupee size={20} color="#22D3EE" />
+            </div>
+            <h2 style={{
+              fontSize: '1.75rem',
+              fontWeight: 800,
+              color: '#22D3EE'
+            }}>
+              ₹{todayMoneyReceived.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </h2>
+            <div style={{
+              fontSize: '0.775rem',
+              color: 'var(--text-muted)',
+              marginTop: '0.5rem'
+            }}>
+              Payments collected today
+            </div>
+          </div>
+        )}
+
+        {/* Today's Expenses - Admin only */}
+        {user.role === 'admin' && (
+          <div className="card card-hover" style={{
+            borderLeft: '4px solid #F97316'
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              marginBottom: '0.75rem'
+            }}>
+              <span className="form-label" style={{ margin: 0 }}>
+                Today's Expenses
+              </span>
+              <Receipt size={20} color="#FB923C" />
+            </div>
+            <h2 style={{
+              fontSize: '1.75rem',
+              fontWeight: 800,
+              color: '#FB923C'
+            }}>
+              ₹{todayExpenses.toLocaleString('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </h2>
+            <div style={{
+              fontSize: '0.775rem',
+              color: 'var(--text-muted)',
+              marginTop: '0.5rem'
+            }}>
+              Operating expenses recorded today
             </div>
           </div>
         )}
@@ -264,7 +553,7 @@ export const Dashboard = () => {
           <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: lowStockItems.length > 0 ? 'var(--warning)' : 'var(--text-primary)' }}>
             {lowStockItems.length} Products
           </h2>
-          <button 
+          <button
             onClick={() => setActiveTab('inventory')}
             style={{ background: 'none', border: 'none', color: 'var(--accent-primary)', fontSize: '0.775rem', fontWeight: 700, padding: 0, marginTop: '0.5rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '4px' }}
           >
@@ -305,7 +594,7 @@ export const Dashboard = () => {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '220px', overflowY: 'auto' }}>
               {lowStockItems.map(item => (
-                <div 
+                <div
                   key={item.id}
                   style={{
                     display: 'flex',
@@ -380,14 +669,12 @@ export const Dashboard = () => {
                   </td>
                   {user.role === 'admin' && (
                     <td>
-                      <button 
+                      <button
                         onClick={() => {
-                          if (window.confirm(`Delete invoice #${inv.invoiceNumber}?`)) {
-                            deleteInvoice(inv.id);
-                          }
-                        }} 
-                        className="btn-icon" 
-                        style={{ color: 'var(--danger)' }} 
+  alert('Invoice deletion is disabled. Admin-only cancellation is being implemented.');
+}}
+                        className="btn-icon"
+                        style={{ color: 'var(--danger)' }}
                         title="Delete Invoice"
                       >
                         <Trash2 size={15} />
