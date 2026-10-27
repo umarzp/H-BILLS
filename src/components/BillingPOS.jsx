@@ -1,16 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
-import { 
-  Search, 
-  ShoppingCart, 
-  Trash2, 
-  Plus, 
-  Minus, 
-  UserPlus, 
-  Check, 
-  QrCode, 
-  CreditCard, 
-  Banknote, 
+import {
+  Search,
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  UserPlus,
+  Check,
+  QrCode,
+  CreditCard,
+  Banknote,
   Receipt,
   Tag,
   AlertCircle
@@ -19,10 +19,10 @@ import { useApp } from '../context/AppContext';
 import { InvoicePrintModal } from './InvoicePrintModal';
 
 export const BillingPOS = () => {
-  const { 
-    products, 
-    customers, 
-    addCustomer, 
+  const {
+    products,
+    customers,
+    addCustomer,
     createInvoice,
     getNextInvoiceNumber,
     categories: appCategories
@@ -31,11 +31,30 @@ export const BillingPOS = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [cart, setCart] = useState([]);
+  const [billingMode, setBillingMode] = useState('PRODUCT');
+
+
+const [serviceForm, setServiceForm] = useState({
+  code: '',
+  name: '',
+  deviceModel: '',
+  labourCharge: '',
+  gstRate: '18'
+});
+
+
+
 
   // Billing configuration
   const [selectedCustomerId, setSelectedCustomerId] = useState('');
   const [gstType, setGstType] = useState('GST'); // 'GST' or 'NON_GST'
-  const [paymentMode, setPaymentMode] = useState('UPI'); // 'UPI', 'Cash', 'Card', 'Credit'
+  const [paymentMode, setPaymentMode] = useState('UPI'); // Legacy selector, retained during migration
+  const [paymentAmounts, setPaymentAmounts] = useState({
+    Cash: '',
+    UPI: '',
+    Card: '',
+    Bank: ''
+  });
   const [overallDiscount, setOverallDiscount] = useState(0);
 
   const currentNextBill = getNextInvoiceNumber ? getNextInvoiceNumber(gstType) : '';
@@ -55,7 +74,7 @@ export const BillingPOS = () => {
 
   // Filtered Products
   const filteredProducts = products.filter(p => {
-    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+    const matchesSearch = p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.barcode.includes(searchQuery);
     const matchesCat = selectedCategory === 'All' || p.category === selectedCategory;
@@ -76,7 +95,7 @@ export const BillingPOS = () => {
           alert(`Cannot add more than available stock (${product.stock} ${product.unit})`);
           return prev;
         }
-        return prev.map(item => 
+        return prev.map(item =>
           item.productId === product.id ? { ...item, qty: item.qty + 1 } : item
         );
       } else {
@@ -109,15 +128,94 @@ export const BillingPOS = () => {
     }).filter(Boolean));
   };
 
-  const removeFromCart = (productId) => {
-    setCart(prev => prev.filter(item => item.productId !== productId));
+
+const removeFromCart = (itemId) => {
+  setCart(prev =>
+    prev.filter(item =>
+      (item.itemType === 'SERVICE' ? item.serviceId : item.productId) !== itemId
+    )
+  );
+};
+
+
+const addServiceToCart = () => {
+  const name = serviceForm.name.trim();
+  const code = serviceForm.code.trim();
+  const deviceModel = serviceForm.deviceModel.trim();
+  const price = Number(serviceForm.labourCharge);
+  const gstRate = Number(serviceForm.gstRate);
+
+  if (!name || !code) {
+    alert('Enter a service name and service code.');
+    return;
+  }
+
+  if (
+    serviceForm.labourCharge === '' ||
+    !Number.isFinite(price) ||
+    price < 0
+  ) {
+    alert('Enter a valid labour charge.');
+    return;
+  }
+  if (
+  serviceForm.gstRate === '' ||
+  !Number.isFinite(gstRate) ||
+  gstRate < 0 ||
+  gstRate > 100
+) {
+  alert('Enter a valid GST rate between 0 and 100.');
+  return;
+}
+
+
+  const serviceItem = {
+    itemType: 'SERVICE',
+    serviceId: `SVC-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    serviceCode: code,
+    name,
+    deviceModel,
+    price,
+    qty: 1,
+    discount: 0,
+    gstRate: Number(serviceForm.gstRate),
+    unit: 'Service'
   };
 
-  const updateItemDiscount = (productId, discountVal) => {
-    setCart(prev => prev.map(item => 
-      item.productId === productId ? { ...item, discount: Math.max(0, Number(discountVal) || 0) } : item
-    ));
-  };
+  setCart(prev => [...prev, serviceItem]);
+
+  setServiceForm({
+  code: '',
+  name: '',
+  deviceModel: '',
+  labourCharge: '',
+  gstRate: '18'
+});
+};
+
+
+
+const updateItemDiscount = (itemId, discountVal) => {
+  setCart(prev => prev.map(item => {
+    const currentId =
+      item.itemType === 'SERVICE'
+        ? item.serviceId
+        : item.productId;
+
+    if (currentId === itemId) {
+      const maxDiscount = item.price * item.qty;
+      const discount = Math.min(
+        maxDiscount,
+        Math.max(0, Number(discountVal) || 0)
+      );
+
+      return { ...item, discount };
+    }
+
+    return item;
+  }));
+};
+
 
   // Calculations
   const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty - item.discount), 0);
@@ -132,6 +230,42 @@ export const BillingPOS = () => {
   }
 
   const grandTotal = Math.round(Math.max(0, subtotal + taxTotal - overallDiscount));
+
+  // Calculate payments in integer paise to avoid floating-point errors.
+  const paymentBreakdown = ['Cash', 'UPI', 'Card', 'Bank']
+    .map(mode => {
+      const raw = paymentAmounts[mode];
+      const amount = raw === '' ? 0 : Number(raw);
+
+      return { mode, amount };
+    });
+
+  const paymentAmountsValid = paymentBreakdown.every(payment =>
+    Number.isFinite(payment.amount) &&
+    payment.amount >= 0 &&
+    Number.isSafeInteger(Math.round(payment.amount * 100)) &&
+    Math.abs(
+      payment.amount * 100 - Math.round(payment.amount * 100)
+    ) < 0.000001
+  );
+
+  const totalReceivedPaise = paymentAmountsValid
+    ? paymentBreakdown.reduce(
+        (sum, payment) => sum + Math.round(payment.amount * 100),
+        0
+      )
+    : 0;
+
+  const grandTotalPaise = Math.round(grandTotal * 100);
+
+  const totalReceived = totalReceivedPaise / 100;
+  const flexibleBalanceDue = Math.max(
+    0,
+    (grandTotalPaise - totalReceivedPaise) / 100
+  );
+
+  const paymentExceedsTotal = totalReceivedPaise > grandTotalPaise;
+
   const changeAmount = Math.max(0, (Number(cashTendered) || 0) - grandTotal);
 
   // Handle Checkout Submit
@@ -143,41 +277,54 @@ export const BillingPOS = () => {
 
     const selectedCust = customers.find(c => c.id === selectedCustomerId);
 
-    const cashReceived =
-  paymentMode === 'Cash'
-    ? Math.min(Number(cashTendered) || 0, grandTotal)
-    : grandTotal;
 
-const balanceDue =
-  paymentMode === 'Credit'
-    ? grandTotal
-    : Math.max(0, grandTotal - cashReceived);
+if (!paymentAmountsValid) {
+      alert('Enter valid payment amounts.');
+      return;
+    }
 
-const paymentStatus =
-  balanceDue <= 0
-    ? 'PAID'
-    : cashReceived > 0
-      ? 'PARTIAL'
-      : 'UNPAID';
+    if (paymentExceedsTotal) {
+      alert('Total received cannot exceed the invoice amount.');
+      return;
+    }
 
-const invoiceData = {
-  customerId: selectedCustomerId || 'WALK-IN',
-  customerName: selectedCust ? selectedCust.name : 'Walk-in Customer',
-  customerGst: selectedCust ? selectedCust.gstIn : '',
-  items: cart.map(item => ({
-    ...item,
-    total: (item.price * item.qty) - item.discount
-  })),
-  subtotal,
-  discount: totalItemDiscount + Number(overallDiscount),
-  taxTotal: Math.round(taxTotal),
-  total: grandTotal,
-  paymentMode,
-  paymentStatus,
-  amountPaid: cashReceived,
-  balanceDue,
-  gstType
-};
+    if (flexibleBalanceDue > 0 && !selectedCust) {
+      alert('Select a registered customer for the unpaid balance.');
+      return;
+    }
+
+    const cashReceived = totalReceived;
+    const balanceDue = flexibleBalanceDue;
+
+    const paymentStatus =
+      balanceDue <= 0 ? 'PAID' :
+      cashReceived > 0 ? 'PARTIAL' : 'UNPAID';
+
+    const activePayments = paymentBreakdown.filter(p => p.amount > 0);
+
+    const invoiceData = {
+      customerId: selectedCustomerId || 'WALK-IN',
+      customerName: selectedCust ? selectedCust.name : 'Walk-in Customer',
+      customerGst: selectedCust ? selectedCust.gstIn : '',
+      items: cart.map(item => ({
+        ...item,
+        total: (item.price * item.qty) - item.discount
+      })),
+      subtotal,
+      discount: totalItemDiscount + Number(overallDiscount),
+      taxTotal: Math.round(taxTotal),
+      total: grandTotal,
+      paymentMode: activePayments.length === 0
+        ? 'Credit'
+        : activePayments.length === 1
+          ? activePayments[0].mode
+          : 'Split',
+      paymentBreakdown: activePayments,
+      paymentStatus,
+      amountPaid: cashReceived,
+      balanceDue,
+      gstType
+    };
 
     const createdInv = await createInvoice(invoiceData);
 
@@ -195,6 +342,13 @@ const invoiceData = {
     setCart([]);
     setOverallDiscount(0);
     setCashTendered('');
+    setPaymentAmounts({
+      Cash: '',
+      UPI: '',
+      Card: '',
+      Bank: ''
+    });
+    setSelectedCustomerId('');
     setActiveInvoiceForPrint(createdInv);
   };
 
@@ -211,7 +365,112 @@ const invoiceData = {
   return (
     <div className="pos-container">
       {/* LEFT: Product Catalog & Search */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflow: 'hidden' }}>
+
+<div
+  className="card"
+  style={{
+    gridColumn: '1 / -1',
+    display: 'flex',
+    gap: '0.5rem',
+    padding: '0.65rem',
+    flexWrap: 'wrap'
+  }}
+>
+  {[
+    { id: 'PRODUCT', label: 'Product Sale' },
+    { id: 'SERVICE', label: 'Service & Labour' },
+    { id: 'COMBINED', label: 'Combined Bill' }
+  ].map(mode => (
+    <button
+      key={mode.id}
+      type="button"
+      onClick={() => setBillingMode(mode.id)}
+      className={`btn ${
+        billingMode === mode.id
+          ? 'btn-primary'
+          : 'btn-secondary'
+      }`}
+      style={{ flex: '1 1 150px' }}
+    >
+      {mode.label}
+    </button>
+  ))}
+</div>
+
+{billingMode !== 'PRODUCT' && (
+  <div
+    className="card"
+    style={{
+      gridColumn: '1 / -1',
+      padding: '1.25rem'
+    }}
+  >
+    <h3 style={{
+      marginBottom: '1rem',
+      color: 'var(--text-primary)'
+    }}>
+      Service & Labour Details
+    </h3>
+
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      gap: '1rem'
+    }}>
+
+{[
+  { key: 'code', label: 'Service Code' },
+  { key: 'name', label: 'Service Name' },
+  { key: 'deviceModel', label: 'Device Brand / Model' },
+  { key: 'labourCharge', label: 'Labour Charge (₹)' },
+  { key: 'gstRate', label: 'GST Rate (%)' }
+].map(field => (
+
+        <label key={field.key} style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.4rem',
+          color: 'var(--text-secondary)'
+        }}>
+          {field.label}
+          <input
+            className="form-input"
+            type={['labourCharge', 'gstRate'].includes(field.key) ? 'number' : 'text'}
+            min={field.key === 'labourCharge' ? '0' : undefined}
+            value={serviceForm[field.key]}
+            onChange={e => setServiceForm(prev => ({
+              ...prev,
+              [field.key]: e.target.value
+            }))}
+          />
+        </label>
+      ))}
+    </div>
+     <button
+      type="button"
+      className="btn btn-primary"
+      onClick={addServiceToCart}
+      style={{
+        marginTop: '1rem',
+        padding: '0.75rem 1.5rem',
+        width: '100%',
+        fontWeight: 700
+      }}
+    >
+      <Plus size={18} />
+      Add Service to Bill
+    </button>
+
+  </div>
+)}
+
+
+      <div style={{
+  display: billingMode === 'SERVICE' ? 'none' : 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+  overflow: 'hidden'
+}}>
         {/* Search & Filters */}
         <div className="card" style={{ padding: '1rem' }}>
           <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '0.75rem' }}>
@@ -250,12 +509,12 @@ const invoiceData = {
             const isOutOfStock = prod.stock <= 0;
 
             return (
-              <div 
+              <div
                 key={prod.id}
                 onClick={() => !isOutOfStock && addToCart(prod)}
                 className={`card card-hover`}
-                style={{ 
-                  padding: '0.85rem', 
+                style={{
+                  padding: '0.85rem',
                   cursor: isOutOfStock ? 'not-allowed' : 'pointer',
                   opacity: isOutOfStock ? 0.6 : 1,
                   display: 'flex',
@@ -288,7 +547,7 @@ const invoiceData = {
                     </span>
                   </div>
 
-                  <button 
+                  <button
                     disabled={isOutOfStock}
                     className="btn btn-primary btn-sm"
                     style={{ padding: '4px 8px' }}
@@ -318,7 +577,7 @@ const invoiceData = {
 
           {/* GST vs Non-GST Selector */}
           <div style={{ display: 'flex', background: 'var(--bg-tertiary)', padding: '2px', borderRadius: 'var(--radius-md)' }}>
-            <button 
+            <button
               onClick={() => setGstType('GST')}
               className={`btn btn-sm ${gstType === 'GST' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ fontSize: '0.7rem', padding: '3px 8px' }}
@@ -326,7 +585,7 @@ const invoiceData = {
             >
               📄 Tax ({nextTaxNum})
             </button>
-            <button 
+            <button
               onClick={() => setGstType('NON_GST')}
               className={`btn btn-sm ${gstType === 'NON_GST' ? 'btn-primary' : 'btn-secondary'}`}
               style={{ fontSize: '0.7rem', padding: '3px 8px' }}
@@ -339,7 +598,7 @@ const invoiceData = {
 
         {/* Customer Selector Bar */}
         <div style={{ padding: '0.75rem 1rem', background: 'var(--bg-card)', borderBottom: '1px solid var(--border-color)', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-          <select 
+          <select
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
             className="form-select"
@@ -352,7 +611,7 @@ const invoiceData = {
               </option>
             ))}
           </select>
-          <button 
+          <button
             onClick={() => setShowAddCustomerModal(true)}
             className="btn btn-secondary btn-sm"
             title="Add New Customer"
@@ -372,8 +631,8 @@ const invoiceData = {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {cart.map(item => (
-                <div 
-                  key={item.productId}
+                <div
+                  key={item.itemType === 'SERVICE' ? item.serviceId : item.productId}
                   style={{
                     background: 'var(--bg-card)',
                     border: '1px solid var(--border-color)',
@@ -385,8 +644,10 @@ const invoiceData = {
                     <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                       {item.name}
                     </span>
-                    <button 
-                      onClick={() => removeFromCart(item.productId)}
+                    <button
+                      onClick={() => removeFromCart(
+                      item.itemType === 'SERVICE' ? item.serviceId : item.productId
+                    )}
                       style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer' }}
                     >
                       <Trash2 size={15} />
@@ -415,7 +676,10 @@ const invoiceData = {
                         min="0"
                         placeholder="0"
                         value={item.discount || ''}
-                        onChange={(e) => updateItemDiscount(item.productId, e.target.value)}
+                        onChange={(e) => updateItemDiscount(
+                        item.itemType === 'SERVICE' ? item.serviceId : item.productId,
+                        e.target.value
+                      )}
                         className="form-input"
                         style={{ width: '55px', padding: '2px 4px', fontSize: '0.75rem', textAlign: 'right' }}
                       />
@@ -466,47 +730,108 @@ const invoiceData = {
             </div>
           </div>
 
-          {/* Payment Mode Selector */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', marginBottom: '0.75rem' }}>
-            {[
-              { id: 'UPI', label: 'UPI QR', icon: QrCode },
-              { id: 'Cash', label: 'Cash', icon: Banknote },
-              { id: 'Card', label: 'Card', icon: CreditCard },
-              { id: 'Credit', label: 'Credit', icon: Receipt },
-            ].map(pm => {
-              const Icon = pm.icon;
-              const isSelected = paymentMode === pm.id;
-              return (
-                <button
-                  key={pm.id}
-                  onClick={() => setPaymentMode(pm.id)}
-                  className={`btn ${isSelected ? 'btn-primary' : 'btn-secondary'}`}
-                  style={{ padding: '0.4rem 0.2rem', fontSize: '0.7rem', flexDirection: 'column', gap: '2px' }}
-                >
-                  <Icon size={14} />
-                  <span>{pm.label}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Cash Change Calculator */}
-          {paymentMode === 'Cash' && (
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.75rem', background: 'var(--bg-secondary)', padding: '6px 8px', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Cash Given:</span>
-              <input
-                type="number"
-                placeholder="₹ Amount"
-                value={cashTendered}
-                onChange={(e) => setCashTendered(e.target.value)}
-                className="form-input"
-                style={{ flex: 1, padding: '3px 6px', fontSize: '0.8rem' }}
-              />
-              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: changeAmount >= 0 ? 'var(--success)' : 'var(--danger)' }}>
-                Return: ₹{changeAmount}
-              </span>
+          {/* Flexible Payment Methods */}
+          <div style={{ marginBottom: '0.75rem' }}>
+            <div style={{
+              fontSize: '0.8rem',
+              fontWeight: 700,
+              marginBottom: '0.5rem'
+            }}>
+              Payment Methods
             </div>
-          )}
+
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+              gap: '0.5rem'
+            }}>
+              {['Cash', 'UPI', 'Card', 'Bank'].map(mode => (
+                <div key={mode}>
+                  <label style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    marginBottom: '0.25rem',
+                    color: 'var(--text-secondary)'
+                  }}>
+                    {mode}
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    placeholder="₹ 0.00"
+                    className="form-input"
+                    value={paymentAmounts[mode]}
+                    onChange={e => setPaymentAmounts(prev => ({
+                      ...prev,
+                      [mode]: e.target.value
+                    }))}
+                    style={{ width: '100%', padding: '0.5rem' }}
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              background: 'var(--bg-secondary)',
+              borderRadius: 'var(--radius-md)'
+            }}>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                marginBottom: '0.4rem'
+              }}>
+                <span>Total Received</span>
+                <strong>₹{totalReceived.toLocaleString('en-IN')}</strong>
+              </div>
+
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between'
+              }}>
+                <span>Balance Due</span>
+                <strong style={{
+                  color: flexibleBalanceDue > 0
+                    ? 'var(--danger)'
+                    : 'var(--success)'
+                }}>
+                  ₹{flexibleBalanceDue.toLocaleString('en-IN')}
+                </strong>
+              </div>
+
+              {paymentExceedsTotal && (
+                <div style={{
+                  color: 'var(--danger)',
+                  fontSize: '0.75rem',
+                  marginTop: '0.5rem'
+                }}>
+                  Payment exceeds invoice total.
+                </div>
+              )}
+
+              {!paymentAmountsValid && (
+                <div style={{
+                  color: 'var(--danger)',
+                  fontSize: '0.75rem',
+                  marginTop: '0.5rem'
+                }}>
+                  Enter valid payment amounts.
+                </div>
+              )}
+
+              {flexibleBalanceDue > 0 && !selectedCustomerId && (
+                <div style={{
+                  color: 'var(--danger)',
+                  fontSize: '0.75rem',
+                  marginTop: '0.5rem'
+                }}>
+                  Select a registered customer for the unpaid balance.
+                </div>
+              )}
+            </div>
+          </div>
 
           {/* Submit Checkout Button */}
           <button

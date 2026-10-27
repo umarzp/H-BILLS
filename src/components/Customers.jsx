@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { formatDate } from '../utils/formatDate';
-import { 
-  Users, 
-  UserPlus, 
-  Search, 
-  CreditCard, 
-  History, 
+import {
+  Users,
+  UserPlus,
+  Search,
+  CreditCard,
+  History,
   X,
   Phone,
   Mail,
@@ -17,13 +17,14 @@ import {
 } from 'lucide-react';
 
 export const Customers = () => {
-  const { customers, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment, invoices, user } = useApp();
+  const { customers, addCustomer, updateCustomer, deleteCustomer, recordCustomerPayment, recordInvoicePayment, invoices, user } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingCustomerId, setEditingCustomerId] = useState(null);
   const [showPayModal, setShowPayModal] = useState(false);
   const [selectedCustForPay, setSelectedCustForPay] = useState(null);
+  const [selectedInvoiceForPay, setSelectedInvoiceForPay] = useState(null);
   const [showHistoryCust, setShowHistoryCust] = useState(null);
 
   // Form states
@@ -40,8 +41,11 @@ export const Customers = () => {
   const [payAmount, setPayAmount] = useState('');
   const [payMode, setPayMode] = useState('Cash');
   const [payNote, setPayNote] = useState('');
+  const [isPaymentProcessing, setIsPaymentProcessing] = useState(false);
+  const paymentSubmittingRef = useRef(false);
+  const paymentRequestRef = useRef(null);
 
-  const filteredCustomers = customers.filter(c => 
+  const filteredCustomers = customers.filter(c =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (c.phone && c.phone.includes(searchQuery)) ||
     (c.company && c.company.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -88,28 +92,83 @@ export const Customers = () => {
   };
 
   const handleRecordPaySubmit = async (e) => {
-  e.preventDefault();
+    e.preventDefault();
 
-  if (!selectedCustForPay || !payAmount) return;
+    if (paymentSubmittingRef.current) return;
 
-  const success = await recordCustomerPayment(
-    selectedCustForPay.id,
-    payAmount,
-    payMode,
-    payNote
-  );
+    if (!selectedCustForPay || !selectedInvoiceForPay || !payAmount) {
+      alert('Select an unpaid invoice and enter a payment amount.');
+      return;
+    }
 
-  if (!success) {
-    return;
-  }
+    paymentSubmittingRef.current = true;
+    setIsPaymentProcessing(true);
 
-  setShowPayModal(false);
-  setSelectedCustForPay(null);
-  setPayAmount('');
-  setPayNote('');
+    try {
+      const paymentDetails = JSON.stringify([
+        selectedInvoiceForPay.id,
+        selectedCustForPay.id,
+        Math.round(Number(payAmount) * 100),
+        payMode,
+        payNote.trim()
+      ]);
 
-  alert('Payment recorded and customer ledger updated!');
-};
+      const storageKey = `hbills-pending-payment-${user?.id || 'unknown'}`;
+      let savedRequest = null;
+
+      try {
+        savedRequest = JSON.parse(sessionStorage.getItem(storageKey) || 'null');
+      } catch {
+        savedRequest = null;
+      }
+
+      if (
+        !paymentRequestRef.current ||
+        paymentRequestRef.current.details !== paymentDetails
+      ) {
+        paymentRequestRef.current =
+          savedRequest?.details === paymentDetails &&
+          /^PAY-[A-Za-z0-9-]{10,100}$/.test(savedRequest?.id || '')
+            ? savedRequest
+            : {
+                details: paymentDetails,
+                id: `PAY-${crypto.randomUUID()}`
+              };
+      }
+
+      sessionStorage.setItem(
+        storageKey,
+        JSON.stringify(paymentRequestRef.current)
+      );
+
+      const success = await recordInvoicePayment(
+        selectedInvoiceForPay.id,
+        selectedCustForPay.id,
+        payAmount,
+        payMode,
+        payNote,
+        paymentRequestRef.current.id
+      );
+
+      if (!success) return;
+
+      sessionStorage.removeItem(storageKey);
+      paymentRequestRef.current = null;
+      setShowPayModal(false);
+      setSelectedCustForPay(null);
+      setSelectedInvoiceForPay(null);
+      setPayAmount('');
+      setPayNote('');
+
+      alert('Invoice payment recorded and outstanding balance updated!');
+    } catch (error) {
+      console.error('Payment submission failed:', error);
+      alert('Payment could not be completed. Check the payment history before retrying.');
+    } finally {
+      paymentSubmittingRef.current = false;
+      setIsPaymentProcessing(false);
+    }
+  };
 
   return (
     <div>
@@ -198,9 +257,7 @@ export const Customers = () => {
                           {hasDue && (
                             <button
                               onClick={() => {
-                                setSelectedCustForPay(cust);
-                                setPayAmount(cust.outstanding);
-                                setShowPayModal(true);
+                                setShowHistoryCust(cust);
                               }}
                               className="btn btn-success btn-sm"
                               title="Receive Payment"
@@ -331,23 +388,26 @@ export const Customers = () => {
       )}
 
       {/* Modal: Collect Payment */}
-      {showPayModal && selectedCustForPay && (
+      {showPayModal && selectedCustForPay && selectedInvoiceForPay && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '440px' }}>
             <div className="modal-header">
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                 Receive Payment from {selectedCustForPay.name}
+                <span style={{ display: 'block', fontSize: '0.8rem', fontWeight: 500, marginTop: '0.3rem' }}>
+                  Invoice #{selectedInvoiceForPay.invoiceNumber}
+                </span>
               </h3>
-              <button onClick={() => setShowPayModal(false)} className="btn-icon">
+              <button onClick={() => setShowPayModal(false)} disabled={isPaymentProcessing} className="btn-icon">
                 <X size={16} />
               </button>
             </div>
 
             <form onSubmit={handleRecordPaySubmit}>
               <div style={{ background: 'var(--bg-secondary)', padding: '0.85rem', borderRadius: 'var(--radius-md)', marginBottom: '1rem', border: '1px solid var(--border-color)' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Current Due Balance:</p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Selected Invoice Balance:</p>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--danger)' }}>
-                  ₹{(selectedCustForPay.outstanding || 0).toLocaleString('en-IN')}
+                  ₹{Number(selectedInvoiceForPay.balanceDue).toLocaleString('en-IN')}
                 </h2>
               </div>
 
@@ -357,7 +417,11 @@ export const Customers = () => {
                   type="number"
                   required
                   min="1"
-                  max={selectedCustForPay.outstanding}
+                  max={Math.min(
+                    Number(selectedInvoiceForPay.balanceDue),
+                    Number(customers.find(c => c.id === selectedCustForPay.id)?.outstanding || 0)
+                  )}
+                  step="0.01"
                   value={payAmount}
                   onChange={(e) => setPayAmount(e.target.value)}
                   className="form-input"
@@ -390,11 +454,16 @@ export const Customers = () => {
               </div>
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.25rem' }}>
-                <button type="submit" className="btn btn-success" style={{ flex: 1 }}>
+                <button
+                  type="submit"
+                  className="btn btn-success"
+                  style={{ flex: 1 }}
+                  disabled={isPaymentProcessing}
+                >
                   <CheckCircle size={16} />
-                  <span>Confirm Receipt</span>
+                  <span>{isPaymentProcessing ? 'Saving Payment...' : 'Confirm Receipt'}</span>
                 </button>
-                <button type="button" onClick={() => setShowPayModal(false)} className="btn btn-secondary">Cancel</button>
+                <button type="button" onClick={() => setShowPayModal(false)} disabled={isPaymentProcessing} className="btn btn-secondary">Cancel</button>
               </div>
             </form>
           </div>
@@ -428,6 +497,8 @@ export const Customers = () => {
                     <th>Total (₹)</th>
                     <th>Mode</th>
                     <th>Status</th>
+                    <th>Balance Due</th>
+                    <th>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -443,6 +514,48 @@ export const Customers = () => {
                           <span className={`badge ${inv.paymentStatus === 'PAID' ? 'badge-success' : 'badge-danger'}`}>
                             {inv.paymentStatus}
                           </span>
+                        </td>
+                        <td style={{ fontWeight: 700 }}>
+                          {Number.isFinite(Number(inv.balanceDue)) && inv.balanceDue != null
+                            ? `₹${Number(inv.balanceDue).toLocaleString('en-IN')}`
+                            : 'Legacy / Unverified'}
+                        </td>
+                        <td>
+                          {inv.paymentSchemaVersion !== 2 ? (
+                            <span
+                              className="badge badge-danger"
+                              title="Historical invoice requires balance reconciliation"
+                            >
+                              Reconciliation Required
+                            </span>
+                          ) : inv.customerId === showHistoryCust.id &&
+                           inv.balanceDue != null &&
+                           Number.isFinite(Number(inv.balanceDue)) &&
+                           Number(inv.balanceDue) > 0 &&
+                           inv.amountPaid != null &&
+                           Number.isFinite(Number(inv.amountPaid)) &&
+                           Math.abs(
+                             Number(inv.amountPaid) +
+                             Number(inv.balanceDue) -
+                             Number(inv.total)
+                           ) < 0.001 &&
+                           inv.status !== 'CANCELLED' && (
+                            <button
+                              type="button"
+                              className="btn btn-success btn-sm"
+                              onClick={() => {
+                                setSelectedCustForPay(showHistoryCust);
+                                setSelectedInvoiceForPay(inv);
+                                setPayAmount('');
+                                setPayMode('Cash');
+                                setPayNote('');
+                                setShowHistoryCust(null);
+                                setShowPayModal(true);
+                              }}
+                            >
+                              Collect Balance
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}

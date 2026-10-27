@@ -1,0 +1,183 @@
+
+.exp-page {
+  padding: 24px;
+  color: var(--text-primary, #f8fafc);
+}
+.exp-header, .exp-panel-head, .exp-modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.exp-header { margin-bottom: 24px; }
+.exp-header h1 { font-size: 26px; margin: 0 0 6px; }
+.exp-header p, .exp-panel-head p, .exp-modal-head p {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 13px;
+  margin: 5px 0 0;
+}
+.exp-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 18px;
+  border: 0;
+  border-radius: 10px;
+  background: #2563eb;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+.exp-primary:disabled { opacity: .45; cursor: not-allowed; }
+.exp-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.exp-stat {
+  background: var(--bg-secondary, #131b2e);
+  border: 1px solid var(--border-color, #293348);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.exp-stat-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(59,130,246,.14);
+  color: #60a5fa;
+  display: grid;
+  place-items: center;
+}
+.exp-stat span { color: #94a3b8; font-size: 13px; }
+.exp-stat strong { font-size: 25px; }
+.exp-panel {
+  background: var(--bg-secondary, #131b2e);
+  border: 1px solid var(--border-color, #293348);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.exp-panel-head { padding: 20px; }
+.exp-panel-head h2 { margin: 0; font-size: 18px; }
+.exp-filters {
+  padding: 0 20px 20px;
+  display: flex;
+  gap: 12px;
+}
+.exp-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  background: #0b1220;
+  border: 1px solid #334155;
+  border-radius: 9px;
+  padding: 0 12px;
+  color: #94a3b8;
+}
+.exp-search input, .exp-filters select,
+.exp-form-grid input, .exp-form-grid select,
+.exp-form-grid textarea {
+  background: #0b1220;
+  color: #f8fafc;
+  border: 1px solid #334155;
+  border-radius: 9px;
+  padding: 11px 12px;
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+}
+.exp-search input { border: 0; outline: 0; }
+.exp-filters select { width: 210px; }
+.exp-table-wrap { overflow-x: auto; }
+.exp-table { width: 100%; border-collapse: collapse; }
+.exp-table th, .exp-table td {
+  padding: 15px 20px;
+  text-align: left;
+  border-top: 1px solid rgba(255,255,255,.07);
+  font-size: 13px;
+}
+.exp-table th { color: #94a3b8; font-weight: 600; }
+.exp-empty {
+  text-align: center !important;
+  padding: 55px 20px !important;
+  color: #94a3b8;
+}
+.exp-empty svg { display: block; margin: 0 auto 12px; }
+.exp-empty strong, .exp-empty span {
+  display: block;
+  margin-top: 8px;
+}
+.exp-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.72);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.exp-modal {
+  background: #131b2e;
+  border: 1px solid #334155;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 720px;
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: 24px;
+  box-sizing: border-box;
+}
+.exp-modal-head { margin-bottom: 24px; }
+.exp-modal-head h2 { margin: 0; }
+.exp-close {
+  background: transparent;
+  border: 0;
+  color: #94a3b8;
+  cursor: pointer;
+}
+.exp-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.exp-form-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.exp-full { grid-column: 1 / -1; }
+.exp-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 24px;
+}
+.exp-secondary {
+  background: #293348;
+  color: #f8fafc;
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 18px;
+  cursor: pointer;
+}
+@media (max-width: 1100px) {
+  .exp-stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .exp-page { padding: 14px; }
+  .exp-header { align-items: flex-start; flex-direction: column; }
+  .exp-stats { grid-template-columns: 1fr; }
+  .exp-filters { flex-direction: column; }
+  .exp-filters select { width: 100%; }
+  .exp-form-grid { grid-template-columns: 1fr; }
+  .exp-full { grid-column: auto; }
+}

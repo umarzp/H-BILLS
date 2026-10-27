@@ -34,16 +34,62 @@ export const Reports = () => {
   const sgstCollected = totalGstTax / 2;
 
   // Calculate profit margin
+  // Historical invoice costs only; never invent product costs.
   let totalCostOfGoods = 0;
-  filteredInvoices.forEach(inv => {
-    inv.items.forEach(item => {
-      const prod = products.find(p => p.id === item.productId);
-      const cPrice = prod ? prod.costPrice : (item.price * 0.7);
-      totalCostOfGoods += cPrice * item.qty;
+  let missingCostLines = 0;
+
+  const profitInvoices = filteredInvoices;
+
+  profitInvoices
+    .filter(inv => !["CANCELLED", "VOID"].includes(
+      String(inv.status || "").toUpperCase()
+    ))
+    .forEach(inv => {
+      (inv.items || []).forEach(item => {
+        if (item.itemType === "SERVICE") {
+          missingCostLines++;
+          return;
+        }
+
+        const cost = item.costPrice === null ||
+          item.costPrice === undefined ||
+          item.costPrice === ""
+          ? null
+          : Number(item.costPrice);
+
+        const qty = Number(item.qty);
+
+        if (
+          cost === null ||
+          !Number.isFinite(cost) ||
+          cost < 0 ||
+          !Number.isFinite(qty) ||
+          qty <= 0
+        ) {
+          missingCostLines++;
+          return;
+        }
+
+        totalCostOfGoods += cost * qty;
+      });
     });
-  });
-  const netProfit = Math.max(0, totalSales - totalCostOfGoods);
-  const profitMarginPercent = totalSales > 0 ? ((netProfit / totalSales) * 100).toFixed(1) : 0;
+
+  const profitIsProvisional = missingCostLines > 0;
+  const netProfit = profitInvoices.reduce(
+    (sum, inv) => {
+      if (["CANCELLED", "VOID"].includes(
+        String(inv.status || "").toUpperCase()
+      )) return sum;
+
+      return sum +
+        Number(inv.total || 0) -
+        Number(inv.taxTotal || 0);
+    },
+    0
+  ) - totalCostOfGoods;
+  const profitMarginPercent = totalSales > 0
+    ? ((netProfit / totalSales) * 100).toFixed(1)
+    : "0.0";
 
   // CSV Exporter
   const exportToCSV = () => {
@@ -109,12 +155,12 @@ export const Reports = () => {
         </div>
 
         <div className="card" style={{ borderLeft: '4px solid var(--success)' }}>
-          <span className="form-label" style={{ margin: 0 }}>Net Estimated Profit</span>
+          <span className="form-label" style={{ margin: 0 }}>Provisional Gross Profit / Loss</span>
           <h2 style={{ fontSize: '1.75rem', fontWeight: 800, color: 'var(--success)', marginTop: '4px' }}>
             ₹{netProfit.toLocaleString('en-IN')}
           </h2>
           <span className="badge badge-success" style={{ marginTop: '4px' }}>
-            {profitMarginPercent}% Margin
+            {profitMarginPercent}% Provisional Gross Margin
           </span>
         </div>
 
@@ -209,10 +255,8 @@ export const Reports = () => {
                     <td>
                       <button
                         onClick={() => {
-                          if (window.confirm(`Delete invoice #${inv.invoiceNumber}?`)) {
-                            deleteInvoice(inv.id);
-                          }
-                        }}
+  alert('Invoice deletion is disabled. Admin-only cancellation is being implemented.');
+}}
                         className="btn-icon"
                         style={{ color: 'var(--danger)' }}
                         title="Delete Invoice"

@@ -13,6 +13,7 @@ import {
   onSnapshot
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
+import { prepareInvoiceCostSnapshots } from '../utils/invoiceCostSnapshot';
 
 const AppContext = createContext();
 
@@ -148,6 +149,9 @@ export const AppProvider = ({ children }) => {
     const saved = localStorage.getItem('hb_payments');
     return saved ? JSON.parse(saved) : [];
   });
+  // EXPENSE MANAGEMENT
+const [expenses, setExpenses] = useState([]);
+
 
   const [settings, setSettings] = useState(() => {
     const saved = localStorage.getItem('hb_settings');
@@ -379,6 +383,33 @@ const unsubscribePayments = onSnapshot(
     );
   }
 );
+// ==========================================================
+// REALTIME EXPENSES LISTENER
+// ==========================================================
+const unsubscribeExpenses = onSnapshot(
+  collection(db, 'expenses'),
+
+  (snapshot) => {
+    const realtimeExpenses = snapshot.docs.map(docSnap => ({
+      ...docSnap.data(),
+      id: docSnap.id
+    }));
+
+    setExpenses(realtimeExpenses);
+
+    console.log(
+      'Realtime expenses updated:',
+      realtimeExpenses.length
+    );
+  },
+
+  (error) => {
+    console.error(
+      'Realtime expenses listener error:',
+      error
+    );
+  }
+);
   // ==========================================================
 // REALTIME INVENTORY LOGS LISTENER
 // ==========================================================
@@ -506,6 +537,7 @@ const unsubscribeCounters = onSnapshot(
   unsubscribePurchases();
   unsubscribeInvoices();
   unsubscribePayments();
+  unsubscribeExpenses();
   unsubscribeInventoryLogs();
   unsubscribeCategories();
   unsubscribeSettings();
@@ -879,16 +911,92 @@ const deleteCategory = async (catName) => {
 // ============================================================
 
 const createInvoice = async (invoiceData) => {
+  try {
+  if (
+    !auth.currentUser ||
+    !user ||
+    !['admin', 'staff'].includes(user.role) ||
+    auth.currentUser.uid !== user.id
+  ) {
+    throw new Error(
+      'You are not authorized to perform this financial operation.'
+    );
+  }
+
   const isTaxInvoice = invoiceData.gstType === 'GST';
 
   const invoiceId = `INV-${Date.now()}`;
-  const paymentId = `PAY-${Date.now()}`;
+  // Prepare payment records before starting the Firestore transaction.
+  const paymentEntries = Array.isArray(invoiceData.paymentBreakdown)
+    ? invoiceData.paymentBreakdown
+    : [{
+        mode: invoiceData.paymentMode,
+        amount: Number(invoiceData.amountPaid) || 0
+      }];
+
+  const validModes = ['Cash', 'UPI', 'Card', 'Bank'];
+
+  const validPayments = paymentEntries.every(entry =>
+    entry &&
+    (
+      validModes.includes(entry.mode) ||
+      (entry.mode === 'Credit' && Number(entry.amount) === 0)
+    ) &&
+    Number.isFinite(Number(entry.amount)) &&
+    Number(entry.amount) >= 0 &&
+    Math.abs(Number(entry.amount) * 100 -
+      Math.round(Number(entry.amount) * 100)) < 0.000001
+  );
+
+  const paymentSumCents = validPayments
+    ? paymentEntries.reduce(
+        (sum, entry) => sum + Math.round(Number(entry.amount) * 100),
+        0
+      )
+    : NaN;
+
+  const invoiceTotal = Number(invoiceData.total);
+  const amountPaid = Number(invoiceData.amountPaid);
+  const balanceDue = Number(invoiceData.balanceDue);
+
+  if (
+    !validPayments ||
+    !Number.isFinite(invoiceTotal) ||
+    !Number.isFinite(amountPaid) ||
+    !Number.isFinite(balanceDue) ||
+    invoiceTotal < 0 ||
+    amountPaid < 0 ||
+    balanceDue < 0 ||
+    amountPaid > invoiceTotal ||
+    !Number.isSafeInteger(Math.round(invoiceTotal * 100)) ||
+    !Number.isSafeInteger(Math.round(amountPaid * 100)) ||
+    !Number.isSafeInteger(Math.round(balanceDue * 100)) ||
+    Math.abs(invoiceTotal * 100 - Math.round(invoiceTotal * 100)) > 0.000001 ||
+    Math.abs(amountPaid * 100 - Math.round(amountPaid * 100)) > 0.000001 ||
+    Math.abs(balanceDue * 100 - Math.round(balanceDue * 100)) > 0.000001 ||
+    paymentSumCents !== Math.round(amountPaid * 100) ||
+    Math.round(invoiceTotal * 100) !==
+      Math.round(amountPaid * 100) + Math.round(balanceDue * 100)
+  ) {
+    throw new Error('Invalid invoice payment breakdown.');
+  }
+
+  if (
+    balanceDue > 0 &&
+    (!invoiceData.customerId || invoiceData.customerId === 'WALK-IN')
+  ) {
+    throw new Error('Select a registered customer for unpaid balances.');
+  }
+
+  const paymentIds = paymentEntries.map(
+    (_, index) =>
+      `PAY-${Date.now()}-${index}-${Math.random().toString(36).slice(2, 9)}`
+  );
 
   const inventoryLogIds = invoiceData.items.map(
     (_, index) => `LOG-${Date.now()}-${index}`
   );
 
-  try {
     const result = await runTransaction(db, async (transaction) => {
 
       // --------------------------------------------------------
@@ -920,24 +1028,69 @@ const createInvoice = async (invoiceData) => {
       // --------------------------------------------------------
       // 2. Read all product documents
       // --------------------------------------------------------
-      const productSnapshots = [];
+// Combine quantities when the same product
+// appears more than once in an invoice.
+const quantitiesByProduct = new Map();
 
-      for (const item of invoiceData.items) {
-        const productRef = doc(db, 'products', item.productId);
-        const productSnap = await transaction.get(productRef);
+for (const item of invoiceData.items) {
+  if (item.itemType === 'SERVICE') {
+    continue;
+  }
 
-        if (!productSnap.exists()) {
-          throw new Error(
-            `Product not found in Firebase: ${item.productId}`
-          );
-        }
+  if (!item.productId) {
+    throw new Error(`Product ID missing for: ${item.name}`);
+  }
 
-        productSnapshots.push({
-          item,
-          ref: productRef,
-          snap: productSnap
-        });
-      }
+  const quantity = Number(item.qty);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    throw new Error(`Invalid quantity for ${item.name}`);
+  }
+
+  quantitiesByProduct.set(
+    item.productId,
+    (quantitiesByProduct.get(item.productId) || 0) + quantity
+  );
+}
+const productSnapshots = [];
+
+for (const item of invoiceData.items) {
+
+  // Service and labour charges do not affect inventory.
+  if (item.itemType === 'SERVICE') {
+    continue;
+  }
+    // Skip products already added to productSnapshots.
+  if (
+    productSnapshots.some(
+      entry => entry.item.productId === item.productId
+    )
+  ) {
+    continue;
+  }
+  // Existing products and spare parts require a product ID.
+  if (!item.productId) {
+    throw new Error(
+      `Product ID missing for: ${item.name}`
+    );
+  }
+
+  const productRef = doc(db, 'products', item.productId);
+  const productSnap = await transaction.get(productRef);
+
+  if (!productSnap.exists()) {
+    throw new Error(
+      `Product not found in Firebase: ${item.productId}`
+    );
+  }
+
+  productSnapshots.push({
+    item,
+    ref: productRef,
+    snap: productSnap
+  });
+}
+
 
       // --------------------------------------------------------
       // 3. Read customer document if not walk-in
@@ -965,12 +1118,30 @@ const createInvoice = async (invoiceData) => {
       // --------------------------------------------------------
       // 4. Prepare invoice
       // --------------------------------------------------------
+      const costSnapshot = prepareInvoiceCostSnapshots(
+        invoiceData.items,
+        productSnapshots
+      );
+
+      const verifiedPaymentStatus =
+        balanceDue === 0 ? 'PAID' :
+        amountPaid > 0 ? 'PARTIAL' : 'UNPAID';
+
       const newInvoice = {
         ...invoiceData,
+        amountPaid,
+        balanceDue,
+        paymentStatus: verifiedPaymentStatus,
+        paymentSchemaVersion: 2,
+        items: costSnapshot.items,
+        costSnapshotStatus: costSnapshot.hasMissingCosts
+          ? 'INCOMPLETE'
+          : 'CAPTURED',
         id: invoiceId,
         invoiceNumber,
         date: new Date().toISOString().slice(0, 10),
-        createdBy: user ? user.name : 'Staff Cashier'
+        createdBy: user ? user.name : 'Staff Cashier',
+        createdByUid: auth.currentUser.uid
       };
 
       // --------------------------------------------------------
@@ -990,14 +1161,23 @@ const createInvoice = async (invoiceData) => {
       productSnapshots.forEach((entry, index) => {
         const productData = entry.snap.data();
 
-        const previousStock = Number(productData.stock) || 0;
 
-        const changeQty = -Number(entry.item.qty);
+const previousStock = Number(productData.stock) || 0;
 
-        const newStock = Math.max(
-          0,
-          previousStock + changeQty
-        );
+const quantity = quantitiesByProduct.get(entry.item.productId);
+
+if (!Number.isInteger(quantity) || quantity <= 0) {
+  throw new Error(`Invalid quantity for ${entry.item.name}`);
+}
+
+if (quantity > previousStock) {
+  throw new Error(
+    `Insufficient stock for ${entry.item.name}. Available: ${previousStock}`
+  );
+}
+
+const changeQty = -quantity;
+const newStock = previousStock - quantity;
 
         transaction.update(
           entry.ref,
@@ -1075,29 +1255,27 @@ const createInvoice = async (invoiceData) => {
       // --------------------------------------------------------
       // 8. Save payment if invoice is paid
       // --------------------------------------------------------
-      let payRecord = null;
-
-      const amountPaid =
-        Number(newInvoice.amountPaid) || 0;
-
-      if (amountPaid > 0) {
-        payRecord = {
-          id: paymentId,
+      // Save one payment record per method.
+      const payRecords = paymentEntries
+        .map((entry, index) => ({
+          id: paymentIds[index],
+          invoiceId,
+          createdByUid: auth.currentUser.uid,
           date: new Date().toISOString().slice(0, 10),
           type: 'IN',
-          entityName:
-             newInvoice.customerName || 'Walk-in Customer',
-          amount: amountPaid,
-          mode: newInvoice.paymentMode,
+          entityName: newInvoice.customerName || 'Walk-in Customer',
+          amount: Number(entry.amount),
+          mode: entry.mode,
           reference: newInvoice.invoiceNumber
-        };
-      }
-       if (payRecord) {
-  transaction.set(
-    doc(db, 'payments', payRecord.id),
-    payRecord
-  );
-}
+        }))
+        .filter(record => record.amount > 0);
+
+      payRecords.forEach(record => {
+        transaction.set(
+          doc(db, 'payments', record.id),
+          record
+        );
+      });
 
       // --------------------------------------------------------
       // 9. Increment correct invoice counter
@@ -1123,7 +1301,7 @@ const createInvoice = async (invoiceData) => {
         updatedProducts,
         newInventoryLogs,
         updatedCustomer,
-        payRecord,
+        payRecords,
         updatedCounter
       };
     });
@@ -1171,9 +1349,9 @@ const createInvoice = async (invoiceData) => {
       );
     }
 
-    if (result.payRecord) {
+    if (result.payRecords.length > 0) {
       setPayments(prev => [
-        result.payRecord,
+        ...result.payRecords,
         ...prev
       ]);
     }
@@ -1312,6 +1490,22 @@ const deleteCustomer = async (id) => {
   }
 };
   const recordCustomerPayment = async (customerId, amount, mode, note) => {
+  if (
+    !auth.currentUser ||
+    !user ||
+    !['admin', 'staff'].includes(user.role) ||
+    auth.currentUser.uid !== user.id
+  ) {
+    throw new Error(
+      'You are not authorized to perform this financial operation.'
+    );
+  }
+
+  // Legacy customer-only collection is disabled.
+  // Payments must be linked to a specific invoice.
+  alert('Use Invoice History > Collect Balance to record payments.');
+  return false;
+
   const payAmt = Number(amount);
 
   const customer = customers.find(c => c.id === customerId);
@@ -1331,6 +1525,7 @@ const deleteCustomer = async (id) => {
     date: new Date().toISOString().slice(0, 10),
     type: 'IN',
     entityName: customer.name,
+    createdByUid: auth.currentUser.uid,
     amount: payAmt,
     mode: mode || 'Cash',
     reference: note || 'Outstanding Balance Payment'
@@ -1387,6 +1582,164 @@ const deleteCustomer = async (id) => {
 
     alert('Failed to save customer payment to Firebase.');
 
+    return false;
+  }
+};
+
+const recordInvoicePayment = async (invoiceId, customerId, amount, mode, note = '', requestId = '') => {
+  if (
+    !auth.currentUser ||
+    !user ||
+    !['admin', 'staff'].includes(user.role) ||
+    auth.currentUser.uid !== user.id
+  ) {
+    alert('You are not authorized to collect invoice payments.');
+    return false;
+  }
+
+  const amountNumber = Number(amount);
+  const amountPaise = Math.round(amountNumber * 100);
+  const validModes = ['Cash', 'UPI', 'Card', 'Bank'];
+
+  if (
+    !Number.isFinite(amountNumber) ||
+    !Number.isSafeInteger(amountPaise) ||
+    amountPaise <= 0 ||
+    Math.abs(amountNumber * 100 - amountPaise) > 0.000001 ||
+    !validModes.includes(mode) ||
+    !invoiceId ||
+    !customerId ||
+    customerId === 'WALK-IN' ||
+    !/^PAY-[A-Za-z0-9-]{10,100}$/.test(requestId)
+  ) {
+    alert('Enter a valid payment amount, method, and customer.');
+    return false;
+  }
+
+  const invoiceRef = doc(db, 'invoices', invoiceId);
+  const customerRef = doc(db, 'customers', customerId);
+  const paymentRef = doc(db, 'payments', requestId);
+
+  try {
+    const result = await runTransaction(db, async transaction => {
+      const existingPaymentSnap = await transaction.get(paymentRef);
+      const invoiceSnap = await transaction.get(invoiceRef);
+      const customerSnap = await transaction.get(customerRef);
+
+      if (existingPaymentSnap.exists()) {
+        const existing = existingPaymentSnap.data();
+        if (
+          existing.invoiceId === invoiceId &&
+          existing.customerId === customerId &&
+          Math.round(Number(existing.amount) * 100) === amountPaise &&
+          existing.mode === mode &&
+          existing.note === String(note || '').trim()
+        ) {
+          return { alreadyRecorded: true };
+        }
+        throw new Error('Payment request ID already used for different details.');
+      }
+
+      if (!invoiceSnap.exists() || !customerSnap.exists()) {
+        throw new Error('Invoice or customer not found.');
+      }
+
+      const invoice = invoiceSnap.data();
+      const customer = customerSnap.data();
+
+      if (invoice.customerId !== customerId) {
+        throw new Error('Invoice does not belong to this customer.');
+      }
+
+      if (invoice.paymentSchemaVersion !== 2) {
+        throw new Error(
+          'Historical invoice requires balance reconciliation before collecting payment.'
+        );
+      }
+
+      if (invoice.status === 'CANCELLED') {
+        throw new Error('Cancelled invoices cannot receive payments.');
+      }
+
+      const totalPaise = Math.round(Number(invoice.total) * 100);
+      const paidPaise = Math.round(Number(invoice.amountPaid) * 100);
+      const duePaise = Math.round(Number(invoice.balanceDue) * 100);
+      const outstandingPaise = Math.round(Number(customer.outstanding) * 100);
+
+      if (
+        !Number.isSafeInteger(totalPaise) ||
+        !Number.isSafeInteger(paidPaise) ||
+        !Number.isSafeInteger(duePaise) ||
+        !Number.isSafeInteger(outstandingPaise) ||
+        paidPaise < 0 ||
+        duePaise <= 0 ||
+        outstandingPaise < 0 ||
+        paidPaise + duePaise !== totalPaise
+      ) {
+        throw new Error('Invoice or customer balances require reconciliation.');
+      }
+
+      if (amountPaise > duePaise || amountPaise > outstandingPaise) {
+        throw new Error('Payment exceeds the available outstanding balance.');
+      }
+
+      const nextPaidPaise = paidPaise + amountPaise;
+      const nextDuePaise = duePaise - amountPaise;
+      const nextOutstandingPaise = outstandingPaise - amountPaise;
+
+      const invoiceUpdate = {
+        amountPaid: nextPaidPaise / 100,
+        balanceDue: nextDuePaise / 100,
+        paymentStatus: nextDuePaise === 0 ? 'PAID' : 'PARTIAL'
+      };
+
+      const payRecord = {
+        id: paymentRef.id,
+        invoiceId,
+        customerId,
+        createdByUid: auth.currentUser.uid,
+        date: new Date().toISOString().slice(0, 10),
+        type: 'IN',
+        entityName: customer.name || invoice.customerName || '',
+        amount: amountPaise / 100,
+        mode,
+        reference: invoice.invoiceNumber,
+        note: String(note || '').trim()
+      };
+
+      transaction.update(invoiceRef, invoiceUpdate);
+      transaction.update(customerRef, {
+        outstanding: nextOutstandingPaise / 100
+      });
+      transaction.set(paymentRef, payRecord);
+
+      return {
+        invoiceUpdate,
+        outstanding: nextOutstandingPaise / 100,
+        payRecord
+      };
+    });
+
+    if (result.alreadyRecorded) return true;
+
+    setInvoices(prev => prev.map(inv =>
+      inv.id === invoiceId
+        ? { ...inv, ...result.invoiceUpdate }
+        : inv
+    ));
+
+    setCustomers(prev => prev.map(c =>
+      c.id === customerId
+        ? { ...c, outstanding: result.outstanding }
+        : c
+    ));
+
+    // Firestore onSnapshot updates the payment history.
+    // Avoid manually inserting a duplicate payment record.
+    return true;
+  } catch (error) {
+    console.error('Invoice payment failed:', error);
+    alert(`Invoice payment was NOT saved.\\n\\n${error.message}`);
     return false;
   }
 };
@@ -1494,32 +1847,202 @@ const deleteSupplier = async (id) => {
 };
 
   const deleteInvoice = async (id) => {
-  try {
-    await deleteDoc(
-      doc(db, 'invoices', id)
-    );
-
-    setInvoices(prev =>
-      prev.filter(inv => inv.id !== id)
-    );
-
-    console.log(
-      'Invoice deleted from Firestore:',
-      id
-    );
-
-    return true;
-
-  } catch (error) {
-    console.error(
-      'Error deleting invoice from Firestore:',
-      error
-    );
-
-    alert('Failed to delete invoice from Firebase.');
-
+  console.warn('Permanent invoice deletion is disabled:', id);
+  alert('Permanent invoice deletion is disabled. Use Admin Invoice Cancellation.');
+  return false;
+};
+const cancelInvoice = async (invoiceId, reason) => {
+  if (!user || user.role !== 'admin') {
+    alert('Only Admin can cancel invoices.');
     return false;
   }
+
+  if (!reason || !reason.trim()) {
+    alert('Cancellation reason is required.');
+    return false;
+  }
+
+  if (!auth.currentUser) {
+  alert('Please log in again.');
+  return false;
+}
+// Verify Admin role against the current Firebase user record
+try {
+  const currentUserRef = doc(db, 'users', auth.currentUser.uid);
+  const currentUserSnap = await getDoc(currentUserRef);
+
+  if (!currentUserSnap.exists() || currentUserSnap.data().role !== 'admin') {
+    alert('Access denied. Only Admin can cancel invoices.');
+    return false;
+  }
+} catch (error) {
+  console.error('Admin verification failed:', error);
+  alert('Unable to verify Admin permissions.');
+  return false;
+}
+try {
+  const invoiceRef = doc(db, 'invoices', invoiceId);
+  const invoiceSnap = await getDoc(invoiceRef);
+
+  if (!invoiceSnap.exists()) {
+    alert('Invoice not found in Firebase.');
+    return false;
+  }
+
+  const invoice = invoiceSnap.data();
+
+  if (invoice.status === 'CANCELLED') {
+    alert('This invoice has already been cancelled.');
+    return false;
+  }
+  // STEP 17: Block automatic cancellation of customer credit invoices
+// until outstanding-payment reconciliation is implemented.
+if (
+  invoice.customerId &&
+  invoice.customerId !== 'WALK-IN' &&
+  Number(invoice.balanceDue) > 0
+) {
+  alert(
+    'Customer credit invoices require payment reconciliation before cancellation.'
+  );
+  return false;
+}
+const amountPaid = Number(invoice.amountPaid) || 0;
+const balanceDue = Number(invoice.balanceDue) || 0;
+const total = Number(invoice.total) || 0;
+
+if (
+  invoice.paymentStatus !== 'UNPAID' ||
+  amountPaid > 0 ||
+  balanceDue !== total
+) {
+  alert(
+    'This invoice cannot be cancelled automatically because payment or balance verification is required.'
+  );
+  return false;
+}
+// STEP 11: Prepare product quantities for stock restoration
+const quantitiesToRestore = new Map();
+
+for (const item of invoice.items || []) {
+  // Services do not have physical stock
+  if (item.itemType === 'SERVICE') {
+    continue;
+  }
+
+  if (!item.productId) {
+    alert(`Missing product ID for: ${item.name}`);
+    return false;
+  }
+
+  const quantity = Number(item.qty);
+
+  if (!Number.isInteger(quantity) || quantity <= 0) {
+    alert(`Invalid quantity for: ${item.name}`);
+    return false;
+  }
+
+  quantitiesToRestore.set(
+    item.productId,
+    (quantitiesToRestore.get(item.productId) || 0) + quantity
+  );
+}
+
+console.log(
+  'Stock quantities prepared for restoration:',
+  Array.from(quantitiesToRestore.entries())
+);
+
+// Generate stable inventory log references before the transaction
+const restorationLogRefs = new Map();
+
+for (const productId of quantitiesToRestore.keys()) {
+  restorationLogRefs.set(
+    productId,
+    doc(collection(db, 'inventoryLogs'))
+  );
+}
+
+// STEP 12A: Prepare stock restoration transaction
+// This function is defined but NOT executed yet.
+const restoreStockTransaction = async (transaction) => {
+  const productRecords = [];
+
+  // Read all product records first
+  for (const [productId, quantity] of quantitiesToRestore) {
+    const productRef = doc(db, 'products', productId);
+    const productSnap = await transaction.get(productRef);
+
+    if (!productSnap.exists()) {
+      throw new Error(`Product not found: ${productId}`);
+    }
+
+    productRecords.push({
+      productId,
+      quantity,
+      productRef,
+      productData: productSnap.data()
+    });
+  }
+
+  // Prepare stock updates after all reads are complete
+  for (const record of productRecords) {
+    const previousStock = Number(record.productData.stock) || 0;
+    const newStock = previousStock + record.quantity;
+
+    transaction.update(record.productRef, {
+      stock: newStock
+    });
+   const logRef = restorationLogRefs.get(record.productId);
+
+transaction.set(logRef, {
+  id: logRef.id,
+  date: new Date().toISOString().slice(0, 10),
+  productId: record.productId,
+  productName: record.productData.name || '',
+  changeQty: record.quantity,
+  previousStock,
+  newStock,
+  type: 'Invoice Cancellation',
+  reason: `Cancelled invoice #${invoice.invoiceNumber}`,
+  invoiceId,
+  cancelledBy: user.name,
+  cancelledByUid: auth.currentUser.uid
+});
+  }
+  // Mark the invoice as cancelled in the same transaction
+transaction.update(invoiceRef, {
+  status: 'CANCELLED',
+  cancellationReason: reason.trim(),
+  cancelledAt: new Date().toISOString(),
+  cancelledBy: user.name,
+  cancelledByUid: auth.currentUser.uid
+});
+};
+
+// STEP 13: Prepare invoice cancellation audit details
+const cancellationDetails = {
+  status: 'CANCELLED',
+  cancellationReason: reason.trim(),
+  cancelledAt: new Date().toISOString(),
+  cancelledBy: user.name,
+  cancelledByUid: auth.currentUser.uid
+};
+
+console.log(
+  'Invoice cancellation details prepared:',
+  cancellationDetails
+);
+
+  // Stock, payments, and invoice status are NOT changed yet.
+  alert('Invoice validated. Cancellation is not enabled yet.');
+  return false;
+
+} catch (error) {
+  console.error('Invoice cancellation validation failed:', error);
+  alert('Unable to validate invoice.');
+  return false;
+}
 };
 
   const deleteInventoryLog = async (id) => {
@@ -1553,36 +2076,84 @@ const deleteSupplier = async (id) => {
   }
 };
 
+  // Financial audit protection:
+  // Payments must not be permanently deleted.
+  // Future corrections will use audited reversal entries.
+
+  const addExpense = async (data) => {
+    if (!auth.currentUser || !user ||
+        !['admin', 'staff'].includes(user.role) ||
+        auth.currentUser.uid !== user.id) {
+      throw new Error('You are not authorized to record expenses.');
+    }
+
+    const amount = Number(data.amount);
+    const date = String(data.date || '');
+    const category = String(data.category || '').trim();
+    const paidTo = String(data.paidTo || '').trim();
+    const mode = String(data.paymentMode || '');
+
+    if (!Number.isFinite(amount) || amount <= 0 ||
+        Math.round(amount * 100) !== amount * 100) {
+      throw new Error('Enter a valid positive amount with up to 2 decimals.');
+    }
+
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date) ||
+        Number.isNaN(Date.parse(date))) {
+      throw new Error('Enter a valid expense date.');
+    }
+
+    if (!category || !paidTo || !['Cash', 'UPI', 'Bank'].includes(mode)) {
+      throw new Error('Complete all required expense fields.');
+    }
+
+    const expenseRef = doc(collection(db, 'expenses'));
+    const paymentRef = doc(db, 'payments', `EXP-${expenseRef.id}`);
+    const createdAt = new Date().toISOString();
+
+    const expenseRecord = {
+      id: expenseRef.id,
+      date,
+      category,
+      amount,
+      paymentMode: mode,
+      paidTo,
+      reference: String(data.reference || '').trim(),
+      description: String(data.description || '').trim(),
+      paymentId: paymentRef.id,
+      createdAt,
+      createdByUid: auth.currentUser.uid,
+      createdByName: user.name || user.email || 'User',
+      source: 'expense'
+    };
+
+    const paymentRecord = {
+      id: paymentRef.id,
+      expenseId: expenseRef.id,
+      date,
+      type: 'OUT',
+      entityName: paidTo,
+      amount,
+      mode,
+      reference: expenseRecord.reference || category,
+      source: 'expense',
+      createdAt,
+      createdByUid: auth.currentUser.uid
+    };
+
+    const batch = writeBatch(db);
+    batch.set(expenseRef, expenseRecord);
+    batch.set(paymentRef, paymentRecord);
+    await batch.commit();
+
+    return expenseRecord;
+  };
+
   const deletePayment = async (id) => {
-  try {
-    await deleteDoc(
-      doc(db, 'payments', id)
-    );
-
-    setPayments(prev =>
-      prev.filter(pay => pay.id !== id)
-    );
-
-    console.log(
-      'Payment deleted from Firestore:',
-      id
-    );
-
-    return true;
-
-  } catch (error) {
-    console.error(
-      'Error deleting payment from Firestore:',
-      error
-    );
-
-    alert(
-      'Failed to delete payment from Firebase.'
-    );
-
+    console.warn('Payment deletion blocked:', id);
+    alert('Payment deletion is disabled. Use an audited reversal when available.');
     return false;
-  }
-};
+  };
 
   const recordSupplierPayment = async (
   supplierId,
@@ -1590,6 +2161,17 @@ const deleteSupplier = async (id) => {
   mode,
   note
 ) => {
+  if (
+    !auth.currentUser ||
+    !user ||
+    !['admin', 'staff'].includes(user.role) ||
+    auth.currentUser.uid !== user.id
+  ) {
+    throw new Error(
+      'You are not authorized to perform this financial operation.'
+    );
+  }
+
   const payAmt = Number(amount);
 
   const supplier = suppliers.find(
@@ -1611,6 +2193,7 @@ const deleteSupplier = async (id) => {
     date: new Date().toISOString().slice(0, 10),
     type: 'OUT',
     entityName: supplier.name,
+    createdByUid: auth.currentUser.uid,
     amount: payAmt,
     mode: mode || 'Bank Transfer',
     reference: note || 'Supplier Payment'
@@ -1673,6 +2256,17 @@ const deleteSupplier = async (id) => {
 // ============================================================
 
 const createPurchase = async (purchaseData) => {
+  if (
+    !auth.currentUser ||
+    !user ||
+    !['admin', 'staff'].includes(user.role) ||
+    auth.currentUser.uid !== user.id
+  ) {
+    throw new Error(
+      'You are not authorized to perform this financial operation.'
+    );
+  }
+
   const timestamp = Date.now();
 
   const purchaseId = `PUR-${timestamp}`;
@@ -1899,6 +2493,7 @@ const createPurchase = async (purchaseData) => {
               purchaseData.supplierId,
 
             purchaseId,
+            createdByUid: auth.currentUser.uid,
 
             amount:
               amountPaid,
@@ -2049,11 +2644,14 @@ const createPurchase = async (purchaseData) => {
 
     await setDoc(
       doc(db, 'settings', 'store'),
-      updatedSettings,
+      newSet,
       { merge: true }
     );
 
-    setSettings(updatedSettings);
+    setSettings(prev => ({
+      ...prev,
+      ...newSet
+    }));
 
     console.log(
       'Settings updated in Firestore'
@@ -2266,12 +2864,19 @@ const updateInvoiceCounters = async (
       // Store Settings
       // ------------------------------------------------------------
 
+      // Never overwrite opening balances from legacy local storage.
+      const {
+        financialOpeningBalances: _legacyOpeningBalances,
+        ...safeSettingsData
+      } = settingsData || {};
+
       await setDoc(
         doc(db, 'settings', 'store'),
         {
-          ...settingsData,
+          ...safeSettingsData,
           migratedAt: new Date().toISOString()
-        }
+        },
+        { merge: true }
       );
 
       // ------------------------------------------------------------
@@ -2337,22 +2942,23 @@ const updateInvoiceCounters = async (
   // Backup & Restore
   // ============================================================
 
-  const exportDataJSON = () => {
-    const data = {
-  products,
-  customers,
-  suppliers,
-  invoices,
-  purchases,
-  inventoryLogs,
-  payments,
-  categories,
-  settings,
+ const exportDataJSON = () => {
+  const data = {
+    products,
+    customers,
+    suppliers,
+    invoices,
+    purchases,
+    inventoryLogs,
+    payments,
+    expenses,
+    categories,
+    settings,
 
-  counters: {
-    taxInvoiceSeq,
-    retailBillSeq
-  },
+    counters: {
+      taxInvoiceSeq,
+      retailBillSeq
+    },
 
   version: '2.0.0',
   exportedAt: new Date().toISOString()
@@ -2371,6 +2977,21 @@ const updateInvoiceCounters = async (
   };
 
   const importDataJSON = async (jsonString) => {
+  if (user?.role !== 'admin') {
+    alert('Only Admin can restore Firebase backups.');
+    return false;
+  }
+
+  const confirmed = window.confirm(
+    'WARNING: Restoring a backup can overwrite existing ' +
+    'Firebase products, invoices, payments, and settings.\n\n' +
+    'Continue with backup restoration?'
+  );
+
+  if (!confirmed) {
+    return false;
+  }
+
   try {
     const parsed = JSON.parse(jsonString);
 
@@ -2443,9 +3064,15 @@ const updateInvoiceCounters = async (
     }
 
     if (parsed.settings) {
+      // Preserve live opening balances during backup restoration.
+      const {
+        financialOpeningBalances: _backupOpeningBalances,
+        ...safeRestoreSettings
+      } = parsed.settings;
+
       await setDoc(
         doc(db, 'settings', 'store'),
-        parsed.settings,
+        safeRestoreSettings,
         { merge: true }
       );
     }
@@ -2497,7 +3124,15 @@ const updateInvoiceCounters = async (
     }
 
     if (parsed.settings) {
-      setSettings(parsed.settings);
+      const {
+        financialOpeningBalances: _ignoredBackupOpeningBalances,
+        ...restoredSettings
+      } = parsed.settings;
+
+      setSettings(prev => ({
+        ...prev,
+        ...restoredSettings
+      }));
     }
 
     if (parsed.counters) {
@@ -2661,6 +3296,7 @@ const updateInvoiceCounters = async (
       updateCustomer,
       deleteCustomer,
       recordCustomerPayment,
+      recordInvoicePayment,
 
       suppliers,
       addSupplier,
@@ -2685,6 +3321,8 @@ const updateInvoiceCounters = async (
       deleteInventoryLog,
 
       payments,
+      expenses,
+      addExpense,
       deletePayment,
 
       settings,
