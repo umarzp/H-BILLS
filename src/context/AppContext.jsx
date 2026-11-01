@@ -3381,6 +3381,7 @@ const updateInvoiceCounters = async (
       invoices,
       createInvoice,
       deleteInvoice,
+      cancelInvoice,
       getNextInvoiceNumber,
 
       taxInvoiceSeq,

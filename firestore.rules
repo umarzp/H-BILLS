@@ -1,0 +1,170 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function hasProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function role() {
+      return get(
+        /databases/$(database)/documents/users/$(request.auth.uid)
+      ).data.role;
+    }
+
+    function isAdmin() {
+      return hasProfile() && role() == 'admin';
+    }
+
+    function isStaff() {
+      return hasProfile() && role() == 'staff';
+    }
+
+    function isAuthorized() {
+      return isAdmin() || isStaff();
+    }
+
+    match /users/{userId} {
+      allow read: if isAdmin()
+        || (signedIn() && request.auth.uid == userId);
+
+      allow create, update, delete: if false;
+    }
+
+    match /expenses/{expenseId} {
+      allow read: if isAuthorized();
+
+      allow create: if isAuthorized()
+        && request.resource.data.id == expenseId
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.amount is number
+        && request.resource.data.amount > 0
+        && request.resource.data.paymentId == 'EXP-' + expenseId
+        && request.resource.data.paymentMode in ['Cash', 'UPI', 'Bank']
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.expenseId == expenseId
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.amount == request.resource.data.amount
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.date == request.resource.data.date
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.mode == request.resource.data.paymentMode
+        && getAfter(
+          /databases/$(database)/documents/payments/$(request.resource.data.paymentId)
+        ).data.createdByUid == request.auth.uid;
+
+      allow update, delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAuthorized();
+
+      allow create: if isAuthorized()
+        && (
+          !request.resource.data.keys().hasAny(['expenseId'])
+          || (
+            request.resource.data.expenseId is string
+            && paymentId == 'EXP-' + request.resource.data.expenseId
+            && request.resource.data.createdByUid == request.auth.uid
+            && request.resource.data.type == 'OUT'
+            && getAfter(
+              /databases/$(database)/documents/expenses/$(request.resource.data.expenseId)
+            ).data.paymentId == paymentId
+            && getAfter(
+              /databases/$(database)/documents/expenses/$(request.resource.data.expenseId)
+            ).data.amount == request.resource.data.amount
+            && getAfter(
+              /databases/$(database)/documents/expenses/$(request.resource.data.expenseId)
+            ).data.date == request.resource.data.date
+            && getAfter(
+              /databases/$(database)/documents/expenses/$(request.resource.data.expenseId)
+            ).data.paymentMode == request.resource.data.mode
+            && getAfter(
+              /databases/$(database)/documents/expenses/$(request.resource.data.expenseId)
+            ).data.createdByUid == request.auth.uid
+          )
+        );
+
+      allow update, delete: if false;
+    }
+
+    match /settings/{documentId} {
+      allow read: if isAuthorized();
+      allow write: if isAdmin();
+    }
+
+    match /counters/{documentId} {
+      allow read: if isAuthorized();
+
+      // Admin may initialize or maintain counters.
+      allow create: if isAdmin();
+
+      // Staff and Admin may advance one invoice sequence by one.
+      allow update: if documentId == 'invoices'
+        && isAuthorized()
+        && request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly(['taxInvoiceSeq', 'retailBillSeq'])
+        && (
+          (
+            request.resource.data.taxInvoiceSeq
+              == resource.data.taxInvoiceSeq + 1
+            && request.resource.data.retailBillSeq
+              == resource.data.retailBillSeq
+          )
+          ||
+          (
+            request.resource.data.retailBillSeq
+              == resource.data.retailBillSeq + 1
+            && request.resource.data.taxInvoiceSeq
+              == resource.data.taxInvoiceSeq
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if isAuthorized();
+
+      allow create: if isAuthorized()
+        && request.resource.data.status != 'CANCELLED';
+
+      allow update: if isAuthorized()
+        && (
+          isAdmin()
+          ||
+          (
+            resource.data.status != 'CANCELLED'
+            && request.resource.data.status == resource.data.status
+          )
+        );
+
+      allow delete: if false;
+    }
+
+    match /{collectionName}/{documentId} {
+      allow read: if isAuthorized();
+      allow create, update: if isAuthorized()
+        && collectionName in [
+          'products',
+          'customers',
+          'suppliers',
+          'purchases',
+          'inventoryLogs',
+          'categories'
+        ];
+
+      allow delete: if false;
+    }
+  }
+}

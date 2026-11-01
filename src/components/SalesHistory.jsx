@@ -26,7 +26,7 @@ const panel = {
 };
 
 export const SalesHistory = () => {
-  const { invoices = [] } = useApp();
+  const { invoices = [], user } = useApp();
 
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
@@ -468,7 +468,35 @@ export const SalesHistory = () => {
     }}
   >
     <p style={{ margin: 0, fontSize: '0.85rem' }}>
-      Additional invoice actions coming soon.
+      {user?.role === 'admin' ? (
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          disabled={selectedInvoice?.status === 'CANCELLED'}
+          onClick={() => {
+            const reason = window.prompt(
+              'Enter the reason for cancelling this invoice:'
+            );
+
+            if (reason === null) return;
+
+            if (!reason.trim()) {
+              window.alert('Cancellation reason is required.');
+              return;
+            }
+
+            window.alert(
+              'Cancellation request prepared. Firebase cancellation is not enabled yet.'
+            );
+          }}
+        >
+          {selectedInvoice?.status === 'CANCELLED'
+            ? 'Invoice Cancelled'
+            : 'Cancel Invoice'}
+        </button>
+      ) : (
+        'No additional actions available.'
+      )}
     </p>
   </div>
 )}
