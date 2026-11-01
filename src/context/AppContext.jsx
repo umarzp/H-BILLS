@@ -1851,198 +1851,351 @@ const deleteSupplier = async (id) => {
   alert('Permanent invoice deletion is disabled. Use Admin Invoice Cancellation.');
   return false;
 };
-const cancelInvoice = async (invoiceId, reason) => {
-  if (!user || user.role !== 'admin') {
-    alert('Only Admin can cancel invoices.');
-    return false;
-  }
-
-  if (!reason || !reason.trim()) {
-    alert('Cancellation reason is required.');
-    return false;
-  }
-
-  if (!auth.currentUser) {
-  alert('Please log in again.');
-  return false;
-}
-// Verify Admin role against the current Firebase user record
-try {
-  const currentUserRef = doc(db, 'users', auth.currentUser.uid);
-  const currentUserSnap = await getDoc(currentUserRef);
-
-  if (!currentUserSnap.exists() || currentUserSnap.data().role !== 'admin') {
-    alert('Access denied. Only Admin can cancel invoices.');
-    return false;
-  }
-} catch (error) {
-  console.error('Admin verification failed:', error);
-  alert('Unable to verify Admin permissions.');
-  return false;
-}
-try {
-  const invoiceRef = doc(db, 'invoices', invoiceId);
-  const invoiceSnap = await getDoc(invoiceRef);
-
-  if (!invoiceSnap.exists()) {
-    alert('Invoice not found in Firebase.');
-    return false;
-  }
-
-  const invoice = invoiceSnap.data();
-
-  if (invoice.status === 'CANCELLED') {
-    alert('This invoice has already been cancelled.');
-    return false;
-  }
-  // STEP 17: Block automatic cancellation of customer credit invoices
-// until outstanding-payment reconciliation is implemented.
-if (
-  invoice.customerId &&
-  invoice.customerId !== 'WALK-IN' &&
-  Number(invoice.balanceDue) > 0
-) {
-  alert(
-    'Customer credit invoices require payment reconciliation before cancellation.'
-  );
-  return false;
-}
-const amountPaid = Number(invoice.amountPaid) || 0;
-const balanceDue = Number(invoice.balanceDue) || 0;
-const total = Number(invoice.total) || 0;
-
-if (
-  invoice.paymentStatus !== 'UNPAID' ||
-  amountPaid > 0 ||
-  balanceDue !== total
-) {
-  alert(
-    'This invoice cannot be cancelled automatically because payment or balance verification is required.'
-  );
-  return false;
-}
-// STEP 11: Prepare product quantities for stock restoration
-const quantitiesToRestore = new Map();
-
-for (const item of invoice.items || []) {
-  // Services do not have physical stock
-  if (item.itemType === 'SERVICE') {
-    continue;
-  }
-
-  if (!item.productId) {
-    alert(`Missing product ID for: ${item.name}`);
-    return false;
-  }
-
-  const quantity = Number(item.qty);
-
-  if (!Number.isInteger(quantity) || quantity <= 0) {
-    alert(`Invalid quantity for: ${item.name}`);
-    return false;
-  }
-
-  quantitiesToRestore.set(
-    item.productId,
-    (quantitiesToRestore.get(item.productId) || 0) + quantity
-  );
-}
-
-console.log(
-  'Stock quantities prepared for restoration:',
-  Array.from(quantitiesToRestore.entries())
-);
-
-// Generate stable inventory log references before the transaction
-const restorationLogRefs = new Map();
-
-for (const productId of quantitiesToRestore.keys()) {
-  restorationLogRefs.set(
-    productId,
-    doc(collection(db, 'inventoryLogs'))
-  );
-}
-
-// STEP 12A: Prepare stock restoration transaction
-// This function is defined but NOT executed yet.
-const restoreStockTransaction = async (transaction) => {
-  const productRecords = [];
-
-  // Read all product records first
-  for (const [productId, quantity] of quantitiesToRestore) {
-    const productRef = doc(db, 'products', productId);
-    const productSnap = await transaction.get(productRef);
-
-    if (!productSnap.exists()) {
-      throw new Error(`Product not found: ${productId}`);
-    }
-
-    productRecords.push({
-      productId,
-      quantity,
-      productRef,
-      productData: productSnap.data()
-    });
-  }
-
-  // Prepare stock updates after all reads are complete
-  for (const record of productRecords) {
-    const previousStock = Number(record.productData.stock) || 0;
-    const newStock = previousStock + record.quantity;
-
-    transaction.update(record.productRef, {
-      stock: newStock
-    });
-   const logRef = restorationLogRefs.get(record.productId);
-
-transaction.set(logRef, {
-  id: logRef.id,
-  date: new Date().toISOString().slice(0, 10),
-  productId: record.productId,
-  productName: record.productData.name || '',
-  changeQty: record.quantity,
-  previousStock,
-  newStock,
-  type: 'Invoice Cancellation',
-  reason: `Cancelled invoice #${invoice.invoiceNumber}`,
+const cancelInvoice = async (
   invoiceId,
-  cancelledBy: user.name,
-  cancelledByUid: auth.currentUser.uid
-});
+  reason,
+  refundChoice = 'PENDING',
+  refundMode = null
+) => {
+  const cancellationReason = String(reason || '').trim();
+  const currentUid = auth.currentUser?.uid;
+
+  if (
+    !currentUid ||
+    !user ||
+    user.role !== 'admin' ||
+    user.id !== currentUid
+  ) {
+    alert('Only an authenticated Admin can cancel invoices.');
+    return false;
   }
-  // Mark the invoice as cancelled in the same transaction
-transaction.update(invoiceRef, {
-  status: 'CANCELLED',
-  cancellationReason: reason.trim(),
-  cancelledAt: new Date().toISOString(),
-  cancelledBy: user.name,
-  cancelledByUid: auth.currentUser.uid
-});
-};
 
-// STEP 13: Prepare invoice cancellation audit details
-const cancellationDetails = {
-  status: 'CANCELLED',
-  cancellationReason: reason.trim(),
-  cancelledAt: new Date().toISOString(),
-  cancelledBy: user.name,
-  cancelledByUid: auth.currentUser.uid
-};
+  if (!invoiceId || !cancellationReason) {
+    alert('Invoice and cancellation reason are required.');
+    return false;
+  }
 
-console.log(
-  'Invoice cancellation details prepared:',
-  cancellationDetails
-);
+  if (!['PENDING', 'PAID'].includes(refundChoice)) {
+    alert('Invalid refund selection.');
+    return false;
+  }
 
-  // Stock, payments, and invoice status are NOT changed yet.
-  alert('Invoice validated. Cancellation is not enabled yet.');
-  return false;
+  if (
+    refundChoice === 'PAID' &&
+    !['Cash', 'UPI', 'Bank'].includes(refundMode)
+  ) {
+    alert('Select a valid refund payment method.');
+    return false;
+  }
 
-} catch (error) {
-  console.error('Invoice cancellation validation failed:', error);
-  alert('Unable to validate invoice.');
-  return false;
-}
+  try {
+    const invoiceRef = doc(db, 'invoices', invoiceId);
+    const adminRef = doc(db, 'users', currentUid);
+    const cancelledAt = new Date().toISOString();
+    const cancellationDate = cancelledAt.slice(0, 10);
+
+    // One deterministic refund payment ID per invoice.
+    // The refund document is created only when money was returned.
+    const refundPaymentRef = doc(
+      db,
+      'payments',
+      `REFUND-${invoiceId}`
+    );
+
+    const result = await runTransaction(db, async transaction => {
+      // Read the Admin profile and invoice within the transaction.
+      const adminSnap = await transaction.get(adminRef);
+      const invoiceSnap = await transaction.get(invoiceRef);
+
+      if (!adminSnap.exists() || adminSnap.data().role !== 'admin') {
+        throw new Error('Admin permission verification failed.');
+      }
+
+      if (!invoiceSnap.exists()) {
+        throw new Error('Invoice not found.');
+      }
+
+      const invoice = invoiceSnap.data();
+
+      if (invoice.status === 'CANCELLED') {
+        throw new Error('Invoice has already been cancelled.');
+      }
+
+      if (invoice.paymentSchemaVersion !== 2) {
+        throw new Error(
+          'Historical invoice requires reconciliation before cancellation.'
+        );
+      }
+
+      const toPaise = value => {
+        const number = Number(value);
+        const paise = Math.round(number * 100);
+
+        if (
+          !Number.isFinite(number) ||
+          !Number.isSafeInteger(paise) ||
+          Math.abs(number * 100 - paise) > 0.000001
+        ) {
+          throw new Error('Invalid financial amount.');
+        }
+
+        return paise;
+      };
+
+      const totalPaise = toPaise(invoice.total);
+      const paidPaise = toPaise(invoice.amountPaid);
+      const duePaise = toPaise(invoice.balanceDue);
+
+      const expectedPaymentStatus =
+        duePaise === 0 ? 'PAID' :
+        paidPaise === 0 ? 'UNPAID' : 'PARTIAL';
+
+      if (
+        totalPaise <= 0 ||
+        paidPaise < 0 ||
+        duePaise < 0 ||
+        paidPaise + duePaise !== totalPaise ||
+        invoice.paymentStatus !== expectedPaymentStatus
+      ) {
+        throw new Error(
+          'Invoice payment amounts require reconciliation before cancellation.'
+        );
+      }
+
+      if (!Array.isArray(invoice.items) || invoice.items.length === 0) {
+        throw new Error('Invoice items are missing.');
+      }
+
+      const quantities = new Map();
+
+      for (const item of invoice.items) {
+        if (item.itemType === 'SERVICE') continue;
+
+        if (!item.productId) {
+          throw new Error('Invoice item has no product ID.');
+        }
+
+        const qty = Number(item.qty);
+
+        if (!Number.isSafeInteger(qty) || qty <= 0) {
+          throw new Error('Invalid invoice item quantity.');
+        }
+
+        const nextQty = (quantities.get(item.productId) || 0) + qty;
+
+        if (!Number.isSafeInteger(nextQty)) {
+          throw new Error('Stock quantity exceeds safe limits.');
+        }
+
+        quantities.set(item.productId, nextQty);
+      }
+
+      // Registered customers require a balance reversal.
+      // WALK-IN invoices have no customer document to update.
+      const isWalkIn =
+        !invoice.customerId || invoice.customerId === 'WALK-IN';
+
+      if (isWalkIn && duePaise !== 0) {
+        throw new Error(
+          'WALK-IN invoice has an unpaid balance requiring reconciliation.'
+        );
+      }
+
+      let customerRef = null;
+      let customerUpdate = null;
+
+      if (!isWalkIn) {
+        customerRef = doc(db, 'customers', invoice.customerId);
+        const customerSnap = await transaction.get(customerRef);
+
+        if (!customerSnap.exists()) {
+          throw new Error('Customer not found.');
+        }
+
+        const customer = customerSnap.data();
+        const orders = Number(customer.totalOrders);
+        const spentPaise = toPaise(customer.totalSpent);
+        const outstandingPaise = toPaise(customer.outstanding);
+
+        if (
+          !Number.isSafeInteger(orders) ||
+          orders < 1 ||
+          spentPaise < totalPaise ||
+          outstandingPaise < duePaise
+        ) {
+          throw new Error(
+            'Customer balances require reconciliation before cancellation.'
+          );
+        }
+
+        customerUpdate = {
+          totalOrders: orders - 1,
+          totalSpent: (spentPaise - totalPaise) / 100,
+          outstanding: (outstandingPaise - duePaise) / 100
+        };
+      }
+
+      // Prevent duplicate refund payments.
+      // All Firestore reads must happen before transaction writes.
+      if (refundChoice === 'PAID' && paidPaise > 0) {
+        const existingRefundSnap = await transaction.get(refundPaymentRef);
+
+        if (existingRefundSnap.exists()) {
+          throw new Error(
+            'A refund payment already exists for this invoice.'
+          );
+        }
+      }
+
+      // Read every product before performing any transaction writes.
+      const productsToRestore = [];
+
+      for (const [productId, quantity] of quantities) {
+        const productRef = doc(db, 'products', productId);
+        const productSnap = await transaction.get(productRef);
+
+        if (!productSnap.exists()) {
+          throw new Error(`Product not found: ${productId}`);
+        }
+
+        const product = productSnap.data();
+        const previousStock = Number(product.stock);
+        const newStock = previousStock + quantity;
+
+        if (
+          !Number.isSafeInteger(previousStock) ||
+          previousStock < 0 ||
+          !Number.isSafeInteger(newStock)
+        ) {
+          throw new Error(`Invalid stock for product: ${productId}`);
+        }
+
+        productsToRestore.push({
+          productId,
+          productRef,
+          product,
+          quantity,
+          previousStock,
+          newStock,
+          logRef: doc(collection(db, 'inventoryLogs'))
+        });
+      }
+
+      // All transaction reads are complete.
+      if (customerRef && customerUpdate) {
+        transaction.update(customerRef, customerUpdate);
+      }
+
+      const restoredProducts = [];
+      const newLogs = [];
+
+      for (const entry of productsToRestore) {
+        transaction.update(entry.productRef, {
+          stock: entry.newStock
+        });
+
+        const log = {
+          id: entry.logRef.id,
+          date: cancellationDate,
+          productId: entry.productId,
+          productName: entry.product.name || '',
+          changeQty: entry.quantity,
+          previousStock: entry.previousStock,
+          newStock: entry.newStock,
+          type: 'Invoice Cancellation',
+          reason: `Cancelled invoice #${invoice.invoiceNumber || invoiceId}`,
+          invoiceId,
+          cancelledBy: user.name || '',
+          cancelledByUid: currentUid
+        };
+
+        transaction.set(entry.logRef, log);
+
+        restoredProducts.push({
+          id: entry.productId,
+          stock: entry.newStock
+        });
+
+        newLogs.push(log);
+      }
+
+      const isRefundPaid = refundChoice === 'PAID' && paidPaise > 0;
+
+      const invoiceUpdate = {
+        status: 'CANCELLED',
+        cancellationReason,
+        cancelledAt,
+        cancelledBy: user.name || '',
+        cancelledByUid: currentUid,
+        refundAmount: paidPaise / 100,
+        refundStatus: paidPaise === 0
+          ? 'NOT_REQUIRED'
+          : isRefundPaid ? 'PAID' : 'PENDING',
+        refundPaidAmount: isRefundPaid ? paidPaise / 100 : 0,
+        refundPaymentId: isRefundPaid ? refundPaymentRef.id : null
+      };
+
+      if (isRefundPaid) {
+        transaction.set(refundPaymentRef, {
+          id: refundPaymentRef.id,
+          invoiceId,
+          invoiceNumber: invoice.invoiceNumber || '',
+          date: cancellationDate,
+          type: 'OUT',
+          category: 'Refund Paid',
+          entityName: invoice.customerName || 'Customer',
+          amount: paidPaise / 100,
+          mode: refundMode,
+          status: 'POSTED',
+          source: 'invoice_refund',
+          reference: invoice.invoiceNumber || invoiceId,
+          createdAt: cancelledAt,
+          createdByUid: currentUid
+        });
+      }
+
+      transaction.update(invoiceRef, invoiceUpdate);
+
+      return {
+        invoiceUpdate,
+        customerId: invoice.customerId,
+        customerUpdate,
+        restoredProducts,
+        newLogs
+      };
+    });
+
+    setInvoices(prev => prev.map(invoice =>
+      invoice.id === invoiceId
+        ? { ...invoice, ...result.invoiceUpdate }
+        : invoice
+    ));
+
+    setCustomers(prev => prev.map(customer =>
+      customer.id === result.customerId
+        ? { ...customer, ...result.customerUpdate }
+        : customer
+    ));
+
+    setProducts(prev => prev.map(product => {
+      const restored = result.restoredProducts.find(
+        entry => entry.id === product.id
+      );
+
+      return restored
+        ? { ...product, stock: restored.stock }
+        : product;
+    }));
+
+    setInventoryLogs(prev => [...result.newLogs, ...prev]);
+
+    alert('Invoice cancelled successfully.');
+    return true;
+  } catch (error) {
+    console.error('Invoice cancellation failed:', error);
+    alert(error.message || 'Invoice cancellation failed.');
+    return false;
+  }
 };
 
   const deleteInventoryLog = async (id) => {

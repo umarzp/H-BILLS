@@ -26,13 +26,20 @@ const panel = {
 };
 
 export const SalesHistory = () => {
-  const { invoices = [], user } = useApp();
+  const { invoices = [], user, cancelInvoice } = useApp();
 
   const [search, setSearch] = useState('');
   const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [selectedId, setSelectedId] = useState(null);
   const [printInvoice, setPrintInvoice] = useState(null);
   const [showMore, setShowMore] = useState(false);
+
+  // Invoice cancellation and refund dialog.
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
+  const [refundChoice, setRefundChoice] = useState('PENDING');
+  const [refundMode, setRefundMode] = useState('Cash');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   const sortedInvoices = useMemo(
     () =>
@@ -75,12 +82,19 @@ export const SalesHistory = () => {
     filteredInvoices[0] ||
     null;
 
-  const totalSales = filteredInvoices.reduce(
+  // Cancelled invoices remain visible in history but are not active sales.
+  const activeInvoices = filteredInvoices.filter(
+    invoice => !['CANCELLED', 'VOID'].includes(
+      String(invoice.status || '').toUpperCase()
+    )
+  );
+
+  const totalSales = activeInvoices.reduce(
     (sum, invoice) => sum + (Number(invoice.total) || 0),
     0
   );
 
-  const totalItems = filteredInvoices.reduce(
+  const totalItems = activeInvoices.reduce(
     (sum, invoice) =>
       sum +
       (invoice.items || []).reduce(
@@ -90,7 +104,7 @@ export const SalesHistory = () => {
     0
   );
 
-  const totalReceived = filteredInvoices.reduce(
+  const totalReceived = activeInvoices.reduce(
     (sum, invoice) => sum + (Number(invoice.amountPaid) || 0),
     0
   );
@@ -472,22 +486,19 @@ export const SalesHistory = () => {
         <button
           type="button"
           className="btn btn-secondary btn-sm"
-          disabled={selectedInvoice?.status === 'CANCELLED'}
+          disabled={
+            selectedInvoice?.status === 'CANCELLED' ||
+            selectedInvoice?.paymentSchemaVersion !== 2 ||
+            !['PAID', 'PARTIAL', 'UNPAID'].includes(
+              selectedInvoice?.paymentStatus
+            )
+          }
           onClick={() => {
-            const reason = window.prompt(
-              'Enter the reason for cancelling this invoice:'
-            );
-
-            if (reason === null) return;
-
-            if (!reason.trim()) {
-              window.alert('Cancellation reason is required.');
-              return;
-            }
-
-            window.alert(
-              'Cancellation request prepared. Firebase cancellation is not enabled yet.'
-            );
+            if (isCancelling || !selectedInvoice) return;
+            setCancelReason('');
+            setRefundChoice('PENDING');
+            setRefundMode('Cash');
+            setShowCancelDialog(true);
           }}
         >
           {selectedInvoice?.status === 'CANCELLED'
@@ -708,6 +719,160 @@ export const SalesHistory = () => {
           )}
         </section>
       </div>
+
+
+      {/* Admin Invoice Cancellation & Refund Dialog */}
+      {showCancelDialog && selectedInvoice && (
+        <div
+          role="presentation"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.65)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cancel Invoice and Refund"
+            style={{
+              background: 'var(--bg-secondary)',
+              color: 'var(--text-primary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: 16,
+              padding: 24,
+              width: '100%',
+              maxWidth: 480,
+              maxHeight: '90vh',
+              overflowY: 'auto'
+            }}
+          >
+            <h2 style={{ marginTop: 0 }}>Cancel Invoice</h2>
+            <p>Invoice: <strong>{selectedInvoice.invoiceNumber}</strong></p>
+
+            <label htmlFor="cancel-reason">Cancellation reason</label>
+            <textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={event => setCancelReason(event.target.value)}
+              placeholder="Enter cancellation reason"
+              rows={3}
+              disabled={isCancelling}
+              style={{ width: '100%', marginTop: 8, padding: 10 }}
+            />
+
+            {Number(selectedInvoice.amountPaid) > 0 && (
+              <div style={{ marginTop: 20 }}>
+                <p>
+                  Customer amount received:
+                  <strong> {money(selectedInvoice.amountPaid)}</strong>
+                </p>
+                <p><strong>Have you returned this money to the customer?</strong></p>
+
+                <label style={{ display: 'block', marginBottom: 10 }}>
+                  <input
+                    type="radio"
+                    checked={refundChoice === 'PAID'}
+                    onChange={() => setRefundChoice('PAID')}
+                    disabled={isCancelling}
+                  />
+                  {' '}Yes, money already returned
+                </label>
+
+                <label style={{ display: 'block', marginBottom: 10 }}>
+                  <input
+                    type="radio"
+                    checked={refundChoice === 'PENDING'}
+                    onChange={() => setRefundChoice('PENDING')}
+                    disabled={isCancelling}
+                  />
+                  {' '}No, refund pending
+                </label>
+
+                {refundChoice === 'PAID' && (
+                  <div style={{ marginTop: 12 }}>
+                    <label htmlFor="refund-mode">Refund method</label>
+                    <select
+                      id="refund-mode"
+                      value={refundMode}
+                      onChange={event => setRefundMode(event.target.value)}
+                      disabled={isCancelling}
+                      style={{ width: '100%', padding: 10, marginTop: 8 }}
+                    >
+                      <option value="Cash">Cash</option>
+                      <option value="UPI">UPI</option>
+                      <option value="Bank">Bank</option>
+                    </select>
+                    <p style={{ fontSize: 12 }}>
+                      Select this only if the money has already been returned to the customer.
+                    </p>
+                  </div>
+                )}
+
+                {refundChoice === 'PENDING' && (
+                  <p style={{ fontSize: 13 }}>
+                    Refund Pending: {money(selectedInvoice.amountPaid)}.
+                    No outgoing payment will be recorded now.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <p style={{ marginTop: 20, fontSize: 13 }}>
+              Cancellation will restore stock, reverse applicable customer
+              balances, and exclude this invoice from active sales.
+            </p>
+
+            <div style={{
+              display: 'flex',
+              gap: 12,
+              justifyContent: 'flex-end',
+              marginTop: 20
+            }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={isCancelling}
+                onClick={() => setShowCancelDialog(false)}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={
+                  isCancelling ||
+                  !cancelReason.trim()
+                }
+                onClick={async () => {
+                  if (isCancelling) return;
+                  setIsCancelling(true);
+                  try {
+                    const success = await cancelInvoice(
+                      selectedInvoice.id,
+                      cancelReason.trim(),
+                      Number(selectedInvoice.amountPaid) > 0
+                        ? refundChoice
+                        : 'PENDING',
+                      refundMode
+                    );
+                    if (success) setShowCancelDialog(false);
+                  } finally {
+                    setIsCancelling(false);
+                  }
+                }}
+              >
+                {isCancelling ? 'Cancelling...' : 'Confirm Cancellation'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Existing Invoice Print / PDF Modal */}
       {printInvoice && (
