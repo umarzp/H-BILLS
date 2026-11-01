@@ -55,10 +55,17 @@ export const SalesHistory = () => {
     const query = search.trim().toLowerCase();
 
     return sortedInvoices.filter((invoice) => {
+      const invoiceStatus = String(invoice.status || '').toUpperCase();
+      const isCancelled = ['CANCELLED', 'VOID'].includes(invoiceStatus);
+
       const matchesPayment =
-        paymentFilter === 'ALL' ||
-        String(invoice.paymentMode || '').toUpperCase() === paymentFilter ||
-        String(invoice.paymentStatus || '').toUpperCase() === paymentFilter;
+        paymentFilter === 'CANCELLED'
+          ? isCancelled
+          : !isCancelled && (
+              paymentFilter === 'ALL' ||
+              String(invoice.paymentMode || '').toUpperCase() === paymentFilter ||
+              String(invoice.paymentStatus || '').toUpperCase() === paymentFilter
+            ) || (paymentFilter === 'ALL' && isCancelled);
 
       const searchable = [
         invoice.invoiceNumber,
@@ -289,7 +296,8 @@ export const SalesHistory = () => {
               'CASH',
               'CREDIT',
               'UNPAID',
-              'PARTIAL'
+              'PARTIAL',
+              'CANCELLED'
             ].map((filter) => (
               <button
                 key={filter}
@@ -319,6 +327,10 @@ export const SalesHistory = () => {
               const selected =
                 selectedInvoice?.id === invoice.id;
 
+              const isCancelled = ['CANCELLED', 'VOID'].includes(
+                String(invoice.status || '').toUpperCase()
+              );
+
               const itemCount = (invoice.items || []).reduce(
                 (sum, item) => sum + (Number(item.qty) || 0),
                 0
@@ -334,9 +346,11 @@ export const SalesHistory = () => {
                     padding: '1rem',
                     cursor: 'pointer',
                     borderRadius: 10,
-                    border: selected
-                      ? '1px solid #3b82f6'
-                      : '1px solid var(--border-color)',
+                    border: isCancelled
+                      ? '1px solid #EF4444'
+                      : selected
+                        ? '1px solid #3b82f6'
+                        : '1px solid var(--border-color)',
                     background: selected
                       ? 'var(--bg-tertiary)'
                       : 'transparent',
@@ -351,9 +365,27 @@ export const SalesHistory = () => {
                       gap: 10
                     }}
                   >
-                    <strong>
-                      {invoice.invoiceNumber}
-                    </strong>
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      flexWrap: 'wrap'
+                    }}>
+                      <strong>{invoice.invoiceNumber}</strong>
+                      {isCancelled && (
+                        <span style={{
+                          color: '#FCA5A5',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid #EF4444',
+                          borderRadius: 5,
+                          padding: '2px 6px',
+                          fontSize: '0.65rem',
+                          fontWeight: 800
+                        }}>
+                          CANCELLED
+                        </span>
+                      )}
+                    </div>
 
                     <strong>
                       {money(invoice.total)}
@@ -435,9 +467,31 @@ export const SalesHistory = () => {
                     INVOICE DETAILS
                   </p>
 
-                  <h2 style={{ margin: 0 }}>
-                    {selectedInvoice.invoiceNumber}
-                  </h2>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexWrap: 'wrap',
+                    gap: 10
+                  }}>
+                    <h2 style={{ margin: 0 }}>
+                      {selectedInvoice.invoiceNumber}
+                    </h2>
+                    {['CANCELLED', 'VOID'].includes(
+                      String(selectedInvoice.status || '').toUpperCase()
+                    ) && (
+                      <span style={{
+                        color: '#FCA5A5',
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid #EF4444',
+                        borderRadius: 6,
+                        padding: '4px 9px',
+                        fontSize: '0.75rem',
+                        fontWeight: 800
+                      }}>
+                        CANCELLED
+                      </span>
+                    )}
+                  </div>
                   <div
   style={{
     display: 'flex',
