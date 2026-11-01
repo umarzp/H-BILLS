@@ -9,6 +9,8 @@ import { formatDate } from '../utils/formatDate';
 export const InvoicePrintModal = ({ invoice, onClose }) => {
   const { settings } = useApp();
   const [printFormat, setPrintFormat] = useState('a4'); // 'a4' or 'thermal'
+  const [paperSize, setPaperSize] = useState('A4');
+  const [orientation, setOrientation] = useState('portrait');
   const [qrDataUrl, setQrDataUrl] = useState('');
   const invoiceRef = useRef(null);
 
@@ -46,6 +48,9 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
     ).map(node => node.outerHTML).join('\n');
 
     const thermal = printFormat === 'thermal';
+    const selectedPageSize = thermal
+      ? '80mm'
+      : `${paperSize} ${orientation}`;
     const doc = frame.contentDocument;
 
     doc.open();
@@ -58,7 +63,7 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
         ${styles}
         <style>
           @page {
-            size: ${thermal ? '80mm' : 'A4 portrait'};
+            size: ${selectedPageSize};
             margin: ${thermal ? '2mm' : '8mm'};
           }
           html, body {
@@ -108,10 +113,38 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
     try {
       const canvas = await html2canvas(element, { scale: 2, useCORS: true });
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const imgWidth = 210;
+      const thermal = printFormat === 'thermal';
+      const pdfOrientation = thermal ? 'portrait' : orientation;
+      const pdfFormat = thermal ? [80, 200] : paperSize.toLowerCase();
+
+      const pdf = new jsPDF({
+        orientation: pdfOrientation,
+        unit: 'mm',
+        format: pdfFormat
+      });
+
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = thermal ? 2 : 8;
+      const availableWidth = pageWidth - margin * 2;
+      const availableHeight = pageHeight - margin * 2;
+
+      const imgWidth = availableWidth;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+
+      if (imgHeight <= availableHeight) {
+        pdf.addImage(imgData, 'PNG', margin, margin, imgWidth, imgHeight);
+      } else {
+        const scale = availableHeight / imgHeight;
+        const fittedWidth = imgWidth * scale;
+        pdf.addImage(
+          imgData, 'PNG',
+          (pageWidth - fittedWidth) / 2,
+          margin,
+          fittedWidth,
+          availableHeight
+        );
+      }
       pdf.save(`Invoice_${invoice.invoiceNumber}.pdf`);
     } catch (err) {
       console.error('Error generating PDF:', err);
@@ -162,6 +195,30 @@ export const InvoicePrintModal = ({ invoice, onClose }) => {
                 80mm Thermal
               </button>
             </div>
+
+            {printFormat !== 'thermal' && (
+              <>
+                <select
+                  aria-label="Paper size"
+                  value={paperSize}
+                  onChange={(e) => setPaperSize(e.target.value)}
+                  style={{ padding: '6px', borderRadius: '6px' }}
+                >
+                  <option value="A4">A4</option>
+                  <option value="A5">A5</option>
+                </select>
+
+                <select
+                  aria-label="Page orientation"
+                  value={orientation}
+                  onChange={(e) => setOrientation(e.target.value)}
+                  style={{ padding: '6px', borderRadius: '6px' }}
+                >
+                  <option value="portrait">Portrait</option>
+                  <option value="landscape">Landscape</option>
+                </select>
+              </>
+            )}
 
             <button onClick={handleWindowPrint} className="btn btn-primary btn-sm">
               <Printer size={15} />

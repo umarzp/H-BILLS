@@ -432,11 +432,12 @@ export const Dashboard = () => {
                   Total Purchase Cost
                 </div>
                 <div style={{
-                  fontSize: 'clamp(1.05rem, 1.65vw, 1.6rem)',
+                  fontSize: 'clamp(0.85rem, 1.35vw, 1.35rem)',
                   fontWeight: 800,
                   color: '#34D399',
                   lineHeight: 1.2,
-                  overflowWrap: 'anywhere',
+                  whiteSpace: 'nowrap',
+                  letterSpacing: '-0.03em',
                   fontVariantNumeric: 'tabular-nums'
                 }}>
                   ₹{inventorySummary.cost.toLocaleString('en-IN', {
