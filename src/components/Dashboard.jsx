@@ -35,7 +35,11 @@ export const Dashboard = () => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const todayInvoices = invoices.filter(i => i.date === todayStr);
-  const todaySales = todayInvoices.reduce((sum, i) => sum + i.total, 0);
+  const todaySales = todayInvoices
+    .filter(i => !['CANCELLED', 'VOID'].includes(
+      String(i.status || '').toUpperCase()
+    ))
+    .reduce((sum, i) => sum + Number(i.total || 0), 0);
 
   const todayPurchasesList = purchases.filter(p => p.date === todayStr);
   const todayPurchasesTotal = todayPurchasesList.reduce((sum, p) => sum + p.total, 0);
