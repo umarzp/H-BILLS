@@ -378,13 +378,16 @@ export const Dashboard = () => {
         {/* Admin-only Inventory Summary */}
         {user.role === 'admin' && (
           <div className="card card-hover" style={{
-            borderLeft: '4px solid #10B981'
+            borderLeft: '4px solid #10B981',
+            minWidth: 0,
+            overflow: 'hidden'
           }}>
             <div style={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
-              marginBottom: '0.75rem'
+              gap: '12px',
+              marginBottom: '1.25rem'
             }}>
               <span className="form-label" style={{ margin: 0 }}>
                 Total Inventory Value
@@ -394,66 +397,75 @@ export const Dashboard = () => {
 
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr',
-              gap: '1rem'
+              gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.5fr)',
+              gap: '1rem',
+              alignItems: 'start'
             }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{
                   color: 'var(--text-secondary)',
-                  fontSize: '0.75rem'
+                  fontSize: '0.8rem',
+                  marginBottom: '8px'
                 }}>
                   Stock Quantity
                 </div>
-                <h2 style={{
-                  fontSize: '1.5rem',
+                <div style={{
+                  fontSize: 'clamp(1.25rem, 2vw, 1.8rem)',
                   fontWeight: 800,
-                  color: '#60A5FA'
+                  color: '#60A5FA',
+                  lineHeight: 1.2
                 }}>
                   {inventorySummary.quantity.toLocaleString('en-IN')}
-                </h2>
+                </div>
               </div>
 
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{
                   color: 'var(--text-secondary)',
-                  fontSize: '0.75rem'
+                  fontSize: '0.8rem',
+                  marginBottom: '8px'
                 }}>
                   Total Purchase Cost
                 </div>
-                <h2 style={{
-                  fontSize: '1.5rem',
+                <div style={{
+                  fontSize: 'clamp(1.05rem, 1.65vw, 1.6rem)',
                   fontWeight: 800,
-                  color: '#34D399'
+                  color: '#34D399',
+                  lineHeight: 1.2,
+                  overflowWrap: 'anywhere',
+                  fontVariantNumeric: 'tabular-nums'
                 }}>
                   ₹{inventorySummary.cost.toLocaleString('en-IN', {
-                    minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                   })}
-                </h2>
+                </div>
               </div>
             </div>
 
             <div style={{
               borderTop: '1px solid var(--border-color)',
-              paddingTop: '0.75rem',
-              marginTop: '0.75rem'
+              paddingTop: '1rem',
+              marginTop: '1.25rem'
             }}>
               <div style={{
                 color: 'var(--text-secondary)',
-                fontSize: '0.75rem'
+                fontSize: '0.8rem',
+                marginBottom: '8px'
               }}>
                 Total Selling Value
               </div>
-              <h2 style={{
-                fontSize: '1.5rem',
+              <div style={{
+                fontSize: 'clamp(1.35rem, 2vw, 1.8rem)',
                 fontWeight: 800,
-                color: '#FBBF24'
+                color: '#FBBF24',
+                lineHeight: 1.2,
+                overflowWrap: 'anywhere',
+                fontVariantNumeric: 'tabular-nums'
               }}>
                 ₹{inventorySummary.sellingValue.toLocaleString('en-IN', {
-                  minimumFractionDigits: 2,
                   maximumFractionDigits: 2
                 })}
-              </h2>
+              </div>
             </div>
 
             {(inventorySummary.missingCosts > 0 ||
